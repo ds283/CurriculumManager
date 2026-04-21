@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workflow Pipeline Renderer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:           #f4f3f0;
+    --surface:      #ffffff;
+    --border:       #e2e0da;
+    --text-primary: #1a1917;
+    --text-secondary: #6b6860;
+    --text-muted:   #a8a59e;
+
+    --completed:    #1a6648;
+    --completed-bg: #eaf4ef;
+    --completed-border: #a8d5bc;
+
+    --current:      #1d4ed8;
+    --current-bg:   #eff4ff;
+    --current-border: #93aff5;
+
+    --pending:      #6b6860;
+    --pending-bg:   #f9f8f6;
+    --pending-border: #dddbd5;
+
+    --branch-reject: #b45309;
+    --branch-reject-bg: #fef8ee;
+
+    --connector:    #c8c5be;
+    --connector-active: #1a6648;
+
+    --radius:       10px;
+    --font:         'DM Sans', sans-serif;
+    --font-mono:    'DM Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 48px 32px;
+  }
+
+  .page-header {
+    margin-bottom: 40px;
+  }
+
+  .page-header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .page-header p {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .workflow-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 32px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  }
+
+  .workflow-card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workflow-card-header h2 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .workflow-type-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Pipeline container ── */
+  .pipeline {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  .pipeline-segment {
+    display: flex;
+    align-items: flex-start;
+    flex-shrink: 0;
+  }
+
+  /* ── Stage node ── */
+  .stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 136px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .stage-node {
+    width: 120px;
+    border-radius: var(--radius);
+    border: 1.5px solid var(--pending-border);
+    background: var(--pending-bg);
+    padding: 12px 14px;
+    cursor: default;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+    position: relative;
+  }
+
+  .stage-node:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+  }
+
+  .stage-node.completed {
+    border-color: var(--completed-border);
+    background: var(--completed-bg);
+  }
+
+  .stage-node.current {
+    border-color: var(--current-border);
+    background: var(--current-bg);
+    box-shadow: 0 0 0 3px rgba(29,78,216,0.10);
+  }
+
+  .stage-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .completed .stage-icon {
+    background: var(--completed);
+    color: white;
+  }
+
+  .current .stage-icon {
+    background: var(--current);
+    color: white;
+  }
+
+  .pending .stage-icon {
+    background: var(--pending-border);
+    color: var(--text-muted);
+  }
+
+  .stage-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+    margin-bottom: 4px;
+  }
+
+  .stage-sublabel {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.3;
+  }
+
+  .current .stage-label { color: var(--current); }
+  .completed .stage-label { color: var(--completed); }
+
+  .current-indicator {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--current);
+    color: white;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+
+  /* ── Connector arrows ── */
+  .connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 24px;  /* align with node centre */
+    width: 32px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .connector-line {
+    width: 100%;
+    height: 2px;
+    background: var(--connector);
+    position: relative;
+  }
+
+  .connector-line.active {
+    background: var(--connector-active);
+  }
+
+  .connector-line::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left: 6px solid var(--connector);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+  }
+
+  .connector-line.active::after {
+    border-left-color: var(--connector-active);
+  }
+
+  .connector-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-top: 4px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Branch fork ── */
+  .branch-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .branch-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .branch-connector {
+    display: flex;
+    align-items: center;
+    width: 32px;
+    flex-shrink: 0;
+  }
+
+  .branch-connector-line {
+    width: 100%;
+    height: 1.5px;
+    background: var(--connector);
+    position: relative;
+  }
+
+  .branch-connector-line::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left: 5px solid var(--connector);
+    border-top: 3px solid transparent;
+    border-bottom: 3px solid transparent;
+  }
+
+  .branch-label-pill {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .branch-label-pill.approve {
+    background: var(--completed-bg);
+    color: var(--completed);
+    border: 1px solid var(--completed-border);
+  }
+
+  .branch-label-pill.reject {
+    background: var(--branch-reject-bg);
+    color: var(--branch-reject);
+    border: 1px solid #f4c67a;
+  }
+
+  .branch-connector-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 48px;
+  }
+
+  /* ── Stage with branches vertical fork ── */
+  .fork-node {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 16px;
+    padding-top: 8px;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .legend-dot.completed { background: var(--completed); }
+  .legend-dot.current   { background: var(--current); }
+  .legend-dot.pending   { background: var(--pending-border); }
+
+  /* ── Progress bar ── */
+  .progress-bar-wrap {
+    margin-bottom: 24px;
+  }
+
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  .progress-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--completed);
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Curriculum Governance</h1>
+  <p>Active workflow pipelines — rendered from FSM definitions</p>
+</div>
+
+<!-- Workflow 1: Module Specification Approval -->
+<div class="workflow-card" id="workflow-module-spec"></div>
+
+<!-- Workflow 2: Programme Revalidation (with branch) -->
+<div class="workflow-card" id="workflow-programme"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// Data structures — in production these arrive
+// as JSON from a Django view endpoint
+// ─────────────────────────────────────────────
+
+const workflows = [
+  {
+    id: "module-spec",
+    title: "Module Specification Approval",
+    type: "module_specification",
+    current_stage: "faculty_review",
+    stages: [
+      { id: "draft",          label: "Draft",            sublabel: "Author editing",       status: "completed" },
+      { id: "submitted",      label: "Submitted",        sublabel: "Awaiting review",      status: "completed" },
+      { id: "faculty_review", label: "Faculty Review",   sublabel: "Panel assessment",     status: "current"   },
+      { id: "approved",       label: "Approved",         sublabel: "Version published",    status: "pending"   },
+    ],
+    transitions: [
+      { from: "draft",          to: "submitted",      label: "Submit",   active: true  },
+      { from: "submitted",      to: "faculty_review", label: "Assign",   active: true  },
+      {
+        from: "faculty_review",
+        branches: [
+          { to: "approved",  label: "Approve", type: "approve", active: false },
+          { to: "submitted", label: "Revise",  type: "reject",  active: false },
+        ]
+      },
+    ]
+  },
+  {
+    id: "programme",
+    title: "Programme Revalidation",
+    type: "programme_revalidation",
+    current_stage: "external_review",
+    stages: [
+      { id: "draft",           label: "Draft",             sublabel: "Initial authoring",    status: "completed" },
+      { id: "internal_review", label: "Internal Review",   sublabel: "Quality & compliance", status: "completed" },
+      { id: "external_review", label: "External Review",   sublabel: "PSRB / external",      status: "current"   },
+      { id: "senate_approval", label: "Senate Approval",   sublabel: "Governance committee", status: "pending"   },
+      { id: "published",       label: "Published",         sublabel: "Version in force",     status: "pending"   },
+    ],
+    transitions: [
+      { from: "draft",           to: "internal_review", label: "Submit",  active: true  },
+      { from: "internal_review", to: "external_review", label: "Pass",    active: true  },
+      {
+        from: "external_review",
+        branches: [
+          { to: "senate_approval", label: "Approve",      type: "approve", active: false },
+          { to: "internal_review", label: "Refer back",   type: "reject",  active: false },
+        ]
+      },
+      { from: "senate_approval", to: "published",        label: "Ratify", active: false },
+    ]
+  }
+];
+
+// ─────────────────────────────────────────────
+// Renderer
+// ─────────────────────────────────────────────
+
+function statusIcon(status, index) {
+  if (status === "completed") return "✓";
+  if (status === "current")   return "●";
+  return String(index + 1);
+}
+
+function buildStageNode(stage, index, isCurrent) {
+  const node = document.createElement("div");
+  node.className = "stage";
+
+  const nodeInner = document.createElement("div");
+  nodeInner.className = `stage-node ${stage.status}`;
+
+  if (isCurrent) {
+    const indicator = document.createElement("div");
+    indicator.className = "current-indicator";
+    indicator.textContent = "Current";
+    nodeInner.appendChild(indicator);
+  }
+
+  const icon = document.createElement("div");
+  icon.className = "stage-icon";
+  icon.textContent = statusIcon(stage.status, index);
+
+  const label = document.createElement("div");
+  label.className = "stage-label";
+  label.textContent = stage.label;
+
+  const sublabel = document.createElement("div");
+  sublabel.className = "stage-sublabel";
+  sublabel.textContent = stage.sublabel;
+
+  nodeInner.appendChild(icon);
+  nodeInner.appendChild(label);
+  nodeInner.appendChild(sublabel);
+  node.appendChild(nodeInner);
+
+  return node;
+}
+
+function buildConnector(label, active) {
+  const conn = document.createElement("div");
+  conn.className = "connector";
+
+  const line = document.createElement("div");
+  line.className = `connector-line${active ? " active" : ""}`;
+
+  const lbl = document.createElement("div");
+  lbl.className = "connector-label";
+  lbl.textContent = label || "";
+
+  conn.appendChild(line);
+  if (label) conn.appendChild(lbl);
+  return conn;
+}
+
+function buildBranchConnector(transition, stageMap) {
+  // Returns a vertical fork with two branch paths
+  const wrapper = document.createElement("div");
+  wrapper.className = "branch-wrapper";
+
+  transition.branches.forEach(branch => {
+    const row = document.createElement("div");
+    row.className = "branch-row";
+
+    const connWrap = document.createElement("div");
+    connWrap.className = "branch-connector-wrap";
+
+    const line = document.createElement("div");
+    line.className = "branch-connector-line";
+
+    const pill = document.createElement("div");
+    pill.className = `branch-label-pill ${branch.type}`;
+    pill.textContent = branch.label;
+
+    connWrap.appendChild(line);
+    connWrap.appendChild(pill);
+
+    const targetStage = stageMap[branch.to];
+    if (targetStage) {
+      const stageIdx = Object.keys(stageMap).indexOf(branch.to);
+      row.appendChild(connWrap);
+      row.appendChild(buildStageNode(targetStage, stageIdx, false));
+    }
+
+    wrapper.appendChild(row);
+  });
+
+  return wrapper;
+}
+
+function renderWorkflow(workflow, container) {
+  // Header
+  const header = document.createElement("div");
+  header.className = "workflow-card-header";
+
+  const title = document.createElement("h2");
+  title.textContent = workflow.title;
+
+  const badge = document.createElement("span");
+  badge.className = "workflow-type-badge";
+  badge.textContent = workflow.type;
+
+  header.appendChild(title);
+  header.appendChild(badge);
+  container.appendChild(header);
+
+  // Progress bar
+  const completed = workflow.stages.filter(s => s.status === "completed").length;
+  const total = workflow.stages.length;
+  const pct = Math.round((completed / total) * 100);
+
+  const progressWrap = document.createElement("div");
+  progressWrap.className = "progress-bar-wrap";
+
+  const progressMeta = document.createElement("div");
+  progressMeta.className = "progress-meta";
+  progressMeta.innerHTML = `<span>${completed} of ${total} stages complete</span><span>${pct}%</span>`;
+
+  const track = document.createElement("div");
+  track.className = "progress-track";
+
+  const fill = document.createElement("div");
+  fill.className = "progress-fill";
+  fill.style.width = `${pct}%`;
+
+  track.appendChild(fill);
+  progressWrap.appendChild(progressMeta);
+  progressWrap.appendChild(track);
+  container.appendChild(progressWrap);
+
+  // Build a map of stage id → stage object for branch lookups
+  const stageMap = {};
+  workflow.stages.forEach(s => { stageMap[s.id] = s; });
+
+  // Pipeline
+  const pipeline = document.createElement("div");
+  pipeline.className = "pipeline";
+
+  // Track which stage IDs we have already rendered
+  // (branch targets are rendered inline, not in the main sequence)
+  const branchTargets = new Set();
+  workflow.transitions.forEach(t => {
+    if (t.branches) t.branches.forEach(b => branchTargets.add(b.to));
+  });
+
+  // Build transition lookup by from-stage
+  const transitionMap = {};
+  workflow.transitions.forEach(t => { transitionMap[t.from] = t; });
+
+  workflow.stages.forEach((stage, index) => {
+    // Skip stages that appear only as branch targets — they are rendered inline
+    if (branchTargets.has(stage.id)) return;
+
+    const segment = document.createElement("div");
+    segment.className = "pipeline-segment";
+
+    const isCurrent = stage.id === workflow.current_stage;
+    segment.appendChild(buildStageNode(stage, index, isCurrent));
+
+    // Check if this stage has an outgoing transition
+    const transition = transitionMap[stage.id];
+    if (transition) {
+      if (transition.branches) {
+        // Fork connector + branch nodes
+        const forkConn = document.createElement("div");
+        forkConn.className = "connector";
+        const forkLine = document.createElement("div");
+        forkLine.className = "connector-line";
+        forkConn.appendChild(forkLine);
+        segment.appendChild(forkConn);
+        segment.appendChild(buildBranchConnector(transition, stageMap));
+      } else {
+        // Simple connector
+        segment.appendChild(buildConnector(transition.label, transition.active));
+      }
+    }
+
+    pipeline.appendChild(segment);
+  });
+
+  container.appendChild(pipeline);
+
+  // Legend
+  const legend = document.createElement("div");
+  legend.className = "legend";
+
+  [
+    { cls: "completed", label: "Completed" },
+    { cls: "current",   label: "Current stage" },
+    { cls: "pending",   label: "Pending" },
+  ].forEach(item => {
+    const li = document.createElement("div");
+    li.className = "legend-item";
+    const dot = document.createElement("div");
+    dot.className = `legend-dot ${item.cls}`;
+    const lbl = document.createElement("span");
+    lbl.textContent = item.label;
+    li.appendChild(dot);
+    li.appendChild(lbl);
+    legend.appendChild(li);
+  });
+
+  container.appendChild(legend);
+}
+
+// ── Render all workflows
+workflows.forEach(wf => {
+  const container = document.getElementById(`workflow-${wf.id}`);
+  if (container) renderWorkflow(wf, container);
+});
+</script>
+</body>
+</html>
