@@ -105,10 +105,16 @@ Type-specific content lives in a separate table with a
 ```python
 class Document(models.Model):
     class DocumentType(models.TextChoices):
-        MODULE_SPECIFICATION = 'module_spec'
-        PROGRAMME_SPECIFICATION = 'programme_spec'
-        ASSESSMENT_BRIEF = 'assessment_brief'
-        # Add new types here alongside their content model
+        MODULE_SPECIFICATION = 'module_spec', 'Module Specification'
+        PROGRAMME_SPECIFICATION = 'programme_spec', 'Programme Specification'
+        ASSESSMENT = 'assessment', 'Assessment'
+        LEARNING_OUTCOME = 'learning_outcome', 'Learning Outcome'
+        TEACHING_ACTIVITY = 'teaching_activity', 'Teaching Activity'
+        REACCREDITATION = 'reaccreditation', 'Reaccreditation'
+        MODULE_REQUISITE = 'module_requisite', 'Module Requisite'  # deferred — governance model TBD with curriculum team
+        CURRICULUM_REVIEW = 'curriculum_review', 'Curriculum Review'  # deferred — follows same pattern as REACCREDITATION        
+
+    # Add new types here alongside their content model
 
     class Classification(models.TextChoices):
         PUBLISHED_ASSET = 'published_asset'
@@ -167,15 +173,8 @@ doc = Document.objects.select_related('module_spec').get(pk=pk)
 content = doc.module_spec
 ```
 
-**Extension pattern** — to add a new document type:
-
-1. Add value to `Document.DocumentType`
-2. Create content model in `documents/models/`
-3. Register in `documents/registry.py`
-4. Define FSM in `workflows/fsm/`
-5. Add admin registration
-6. Generate and apply migration
-7. Add tests following `tests/documents/test_module_spec.py`
+**Extension pattern** — see the Extension checklist at the end of this
+document for the full step-by-step procedure.
 
 ### 3.3 Workflow instance and audit trail
 
@@ -307,9 +306,226 @@ AssetVersion.objects.get(
 
 ---
 
-## 4. Finite state machine
+## 4. Denormalised aggregation updates
 
-### 4.1 Principles
+### 4.1 Purpose
+
+`ModuleIdentifier` and `ProgrammeIdentifier` carry denormalised fields
+summarising the most recent publication event across all governed objects
+anchored to them. These fields support at-a-glance summary pages and module
+and programme list views without requiring a union query across multiple
+document types at read time.
+
+| Field                          | Type                     | Notes                                              |
+|--------------------------------|--------------------------|----------------------------------------------------|
+| `last_published_at`            | DateTimeField (nullable) | Timestamp of the most recent publication of any    |
+|                                |                          | governed object anchored to this identifier        |
+| `last_published_document_type` | CharField (nullable)     | `Document.DocumentType` value of that object       |
+| `has_in_flight_workflow`       | BooleanField             | True if any anchored document has an open workflow |
+
+On `ProgrammeIdentifier`, two variants of the timestamp are maintained:
+
+| Field                              | Type                     | Notes                                                    |
+|------------------------------------|--------------------------|----------------------------------------------------------|
+| `last_published_at`                | DateTimeField (nullable) | Any publication in the programme's scope (including      |
+|                                    |                          | module-level events for modules belonging to this        |
+|                                    |                          | programme)                                               |
+| `programme_spec_last_published_at` | DateTimeField (nullable) | Set only when `ProgrammeSpecificationContent` publishes. |
+|                                    |                          | Never updated by module-level events.                    |
+
+This distinction allows a programme coordinator to see both "anything
+changed" and "the programme specification itself changed" without
+conflating the two.
+
+### 4.2 Update protocol
+
+All three fields are updated by a shared post-transition hook fired
+whenever a governed document reaches its publication state. The hook
+must never be called directly — it is invoked by the FSM machinery
+only.
+
+```python
+# workflows/hooks.py
+
+from django.db import transaction
+from django.utils.timezone import now
+
+
+def on_document_published(document):
+    """
+    Called by the FSM publication transition for every document type.
+    Updates denormalised aggregation fields on ModuleIdentifier and,
+    where applicable, ProgrammeIdentifier.
+    """
+    module = resolve_module_identifier(document)  # returns None if not applicable
+
+    if module:
+        with transaction.atomic():
+            # Lock the module row before updating to prevent lost updates
+            # from concurrent publication events on the same module.
+            locked = ModuleIdentifier.objects.select_for_update().get(pk=module.pk)
+            locked.last_published_at = now()
+            locked.last_published_document_type = document.document_type
+            locked.save(update_fields=[
+                'last_published_at',
+                'last_published_document_type',
+            ])
+
+        # Propagate to all programmes that include this module.
+        with transaction.atomic():
+            programme_ids = ProgrammeModuleMembership.objects.filter(
+                module=module
+            ).values_list('programme_id', flat=True)
+
+            # Lock all affected programme rows simultaneously.
+            # Rows are locked in pk order by the database to avoid deadlocks.
+            ProgrammeIdentifier.objects.select_for_update().filter(
+                pk__in=programme_ids
+            ).update(
+                last_published_at=now(),
+                last_published_document_type=document.document_type,
+            )
+```
+
+`resolve_module_identifier` is a registry function in
+`documents/registry.py` that maps each `DocumentType` to the FK path
+that reaches its `ModuleIdentifier`, if one exists. Document types with
+no module anchor (e.g. `ProgrammeSpecificationContent`) return `None`
+from this function and are excluded from module-level propagation.
+`ProgrammeSpecificationContent` instead updates
+`programme_spec_last_published_at` directly in its own FSM publication
+transition side effect.
+
+### 4.3 Concurrency discipline
+
+`select_for_update()` must be used whenever these fields are written.
+It generates a `SELECT ... FOR UPDATE` SQL statement, acquiring a
+row-level lock for the duration of the enclosing `transaction.atomic()`
+block. The lock is released automatically on commit or rollback.
+
+Rules that must be followed at every call site:
+
+- `select_for_update()` must always be called inside `transaction.atomic()`.
+  Calling it outside a transaction has no effect and will raise
+  `TransactionManagementError` in development.
+- When locking multiple rows (the programme propagation case), always
+  use a bulk `.filter().update()` rather than locking and saving rows
+  individually in a loop. The database acquires locks in a consistent
+  internal order, avoiding deadlock.
+- Never acquire a lock on `ModuleIdentifier` and `ProgrammeIdentifier`
+  in the same `atomic()` block. Use separate blocks as shown above.
+  This eliminates the cross-table deadlock risk.
+- The FSM publication transition is already wrapped in `atomic()` for
+  its own state change and audit event. The hook runs inside that same
+  transaction — do not open a new outer `atomic()` around the hook call.
+
+### 4.4 `has_in_flight_workflow` — separate hook pair
+
+`has_in_flight_workflow` on `ModuleIdentifier` and `ProgrammeIdentifier`
+is maintained by a dedicated pair of hooks, distinct from
+`on_document_published`:
+
+```python
+# workflows/hooks.py
+
+def on_workflow_opened(document):
+    """
+    Called by the FSM when a WorkflowInstance is first created for
+    any governed document. Sets has_in_flight_workflow = True on the
+    anchored ModuleIdentifier and affected ProgrammeIdentifiers.
+    """
+    module = resolve_module_identifier(document)
+    if module:
+        with transaction.atomic():
+            ModuleIdentifier.objects.select_for_update().filter(
+                pk=module.pk
+            ).update(has_in_flight_workflow=True)
+
+        with transaction.atomic():
+            programme_ids = ProgrammeModuleMembership.objects.filter(
+                module=module
+            ).values_list('programme_id', flat=True)
+
+            ProgrammeIdentifier.objects.select_for_update().filter(
+                pk__in=programme_ids
+            ).update(has_in_flight_workflow=True)
+
+
+def on_workflow_closed(document):
+    """
+    Called by the FSM when a WorkflowInstance reaches any terminal
+    state (approved, withdrawn, rejected, etc.). Recomputes
+    has_in_flight_workflow rather than setting False directly, because
+    other documents anchored to the same module may still have open
+    workflows.
+    """
+    module = resolve_module_identifier(document)
+    if module:
+        has_open = Document.objects.filter(
+            module_identifier=module,
+        ).exclude(
+            current_workflow__isnull=True,
+        ).filter(
+            current_workflow__state__in=NON_TERMINAL_STATES,
+        ).exists()
+
+        with transaction.atomic():
+            ModuleIdentifier.objects.select_for_update().filter(
+                pk=module.pk
+            ).update(has_in_flight_workflow=has_open)
+
+        if not has_open:
+            with transaction.atomic():
+                programme_ids = ProgrammeModuleMembership.objects.filter(
+                    module=module
+                ).values_list('programme_id', flat=True)
+
+                # Only recompute programme-level flag if the module
+                # flag cleared. If other modules on the programme still
+                # have open workflows the programme flag stays True —
+                # recompute per programme only when needed.
+                for programme_id in programme_ids:
+                    prog_has_open = Document.objects.filter(
+                        module_identifier__programme_memberships__programme_id=programme_id,
+                    ).exclude(
+                        current_workflow__isnull=True,
+                    ).filter(
+                        current_workflow__state__in=NON_TERMINAL_STATES,
+                    ).exists()
+
+                    ProgrammeIdentifier.objects.select_for_update().filter(
+                        pk=programme_id
+                    ).update(has_in_flight_workflow=prog_has_open)
+```
+
+**Why `on_workflow_closed` recomputes rather than sets `False`**
+
+Setting `has_in_flight_workflow = False` directly on close would
+produce incorrect results when two workflows for the same module close
+in rapid succession, or when one of several concurrent open workflows
+closes. The recomputation ensures the field always reflects the true
+current state regardless of concurrency.
+
+**Programme-level recomputation is conditional**
+
+The programme flag recomputation only runs when the module flag clears.
+If the module still has open workflows, the programme necessarily has
+at least one open workflow via that module — no recomputation needed.
+This avoids an unnecessary cross-module query on the common case where
+a module has several workflows closing in sequence.
+
+**Extension checklist obligation**
+
+`on_workflow_opened` and `on_workflow_closed` must be called from the
+FSM for every document type, not just publication transitions. This is
+a separate checklist item from the `on_document_published` hook. Both
+are required for any document type anchored to a `ModuleIdentifier`.
+
+---
+
+## 5. Finite state machine
+
+### 5.1 Principles
 
 - States are Python enums using `auto()` — integer values never appear
   in application code. State is stored and retrieved as `enum.name`.
@@ -318,7 +534,7 @@ AssetVersion.objects.get(
 - All transition logic executes inside `transaction.atomic()`: state
   change, audit event, task supersession, and task creation are atomic.
 
-### 4.2 Transition dataclass
+### 5.2 Transition dataclass
 
 ```python
 from dataclasses import dataclass, field
@@ -337,7 +553,7 @@ class Transition:
     is_rejection_branch: bool = False  # marks non-primary paths
 ```
 
-### 4.3 Example FSM
+### 5.3 Example FSM
 
 ```python
 from enum import Enum, auto
@@ -392,7 +608,7 @@ class ModuleSpecFSM:
     }
 ```
 
-### 4.4 perform_transition
+### 5.4 perform_transition
 
 ```python
 from django.db import transaction
@@ -421,7 +637,7 @@ def perform_transition(workflow_instance, event, actor, actor_role):
         fsm.create_tasks(workflow_instance, new_state)
 ```
 
-### 4.5 State persistence
+### 5.5 State persistence
 
 ```python
 # Writing
@@ -433,35 +649,134 @@ instance.state = ModuleSpecState[record.state_col]
 
 ---
 
-## 5. Django application structure
+## 6. Django application structure
 
-### 5.1 App layout
+### 6.1 App layout
 
-| App          | Responsibility                                                      |
-|--------------|---------------------------------------------------------------------|
-| `core`       | Tenant, TenantScopedManager, middleware, ContextVar, base views     |
-| `documents`  | Document envelope, content models, registry, document-type FSMs     |
-| `workflows`  | WorkflowInstance, WorkflowEvent, Task, perform_transition, FSM base |
-| `assets`     | Asset, AssetVersion, WorkflowVersionEvent, publication logic        |
-| `scheduling` | PublicationTarget, ScheduledMilestone — scaffold only in Phase 1    |
-| `accounts`   | TenantMembership, Okta SSO, role resolution                         |
-| `api`        | JSON endpoints for HTMX and pipeline visualisation                  |
+The application is divided into eight Django apps. The dependency
+direction is strictly one-way: `registry` imports only from `core`;
+`documents` imports from `core` and `registry`; `workflows` imports
+from `core`, `registry`, and `documents`; and so on downward. No
+upward imports.
 
-### 5.2 Settings split
+| App          | Responsibility                                                   |
+|--------------|------------------------------------------------------------------|
+| `core`       | `Tenant`, `TenantScopedManager`, `TenantMiddleware`,             |
+|              | `TenantMembershipMiddleware`, `ContextVar`, base views           |
+| `accounts`   | `TenantMembership`, Okta SSO via `mozilla-django-oidc`,          |
+|              | role resolution, `ProgrammeConvenorScope`, `ModuleConvenorScope` |
+| `registry`   | Stable, administrative, non-governed reference models.           |
+|              | No workflows, no versioning, no FSM. Deactivated rather than     |
+|              | deleted. Includes: `FacultyIdentifier`, `SchoolIdentifier`,      |
+|              | `DepartmentIdentifier`, `ProgrammeIdentifier`,                   |
+|              | `ModuleIdentifier`, `AssessmentSlotIdentifier`,                  |
+|              | `FHEQLevel`, `CommitteeIdentifier`, `AccreditingBodyIdentifier`, |
+|              | `ProgrammeAccreditationScope`, `RegulatoryDocument`,             |
+|              | `PeriodIdentifier`, `PeriodUnitIdentifier`                       |
+| `documents`  | `Document` envelope, all `[Type]Content` content models,         |
+|              | `documents/registry.py` (type → content model + relation name    |
+|              | mapping, `resolve_module_identifier`), document-type FSM         |
+|              | definitions                                                      |
+| `workflows`  | `WorkflowInstance`, `WorkflowEvent`, `Task`,                     |
+|              | `perform_transition`, FSM base class, `DOCUMENT_DEPENDENCIES`,   |
+|              | publication hooks (`on_document_published`)                      |
+| `assets`     | `AssetVersion`, `WorkflowVersionEvent`, publication logic        |
+| `scheduling` | `PublicationTarget`, `ScheduledMilestone`, `MilestoneOverlap`,   |
+|              | `TransitionDuration` — scaffold only in Phase 1                  |
+| `api`        | Internal JSON endpoints for HTMX and pipeline visualisation      |
 
-- `settings/base.py` — installed apps, middleware, database, Celery, logging
-- `settings/dev.py` — DEBUG=True, Waitress, local Redis
+**Migration order:** `core` → `accounts` → `registry` → `documents`
+→ `workflows` → `assets` → `scheduling` → `api`. Every content model
+in `documents` carries FKs into `registry`; the registry must be
+migrated first.
+
+**Validate at startup:** every `Document.DocumentType` value must have
+a registered content model in `documents/registry.py` and a registered
+FSM in `workflows/fsm/`. A startup check should raise `ImproperlyConfigured`
+if any are missing.
+
+---
+
+### 6.2 The registry app
+
+The `registry` app is a distinct population from the `documents` app.
+The distinction is architectural, not just organisational:
+
+- **Registry models** answer "what exists?" They are stable identity
+  records — created by administrators, deactivated rather than deleted,
+  carrying no `WorkflowInstance` and no `AssetVersion`. They form the
+  fixed roots of the document dependency graph. All cross-document FKs
+  point at registry models, never at other document models; this is
+  what keeps the dependency graph acyclic.
+
+- **Document models** answer "what has been decided, and when, and by
+  whom?" They have lifecycles, audit trails, FSM states, and dependency
+  relationships declared in `DOCUMENT_DEPENDENCIES`.
+
+Most registry models inherit from a common abstract base:
+
+```python
+class RegistryModel(models.Model):
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    code = models.CharField(max_length=50)
+    name = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantScopedManager()
+    all_tenants = TenantScopedManager(require_tenant=False)
+
+    class Meta:
+        abstract = True
+        unique_together = [('tenant', 'code')]
+```
+
+Not every registry model fits this exactly — `PeriodIdentifier` and
+`PeriodUnitIdentifier` use sequence-managed ordering rather than a
+`code` field; `FHEQLevel` and `AccreditingBodyIdentifier` are global
+rather than tenant-scoped — but the pattern is the baseline.
+
+---
+
+### 6.3 The accounts app and scoping layer
+
+`accounts` owns `TenantMembership` (the global role grant) and the two
+scoping models that express ongoing institutional responsibility:
+
+- `ProgrammeConvenorScope` — scopes a person to a programme with a
+  `valid_from` / `valid_to` validity window. Uses a partial
+  `UniqueConstraint` to enforce at most one active record per
+  `(programme, user, role)` combination.
+- `ModuleConvenorScope` — same pattern for modules.
+
+These are append-only records: convenorships are ended by setting
+`valid_to`, not by deletion. Users with an active scoping record must
+hold at least the `author` role in `TenantMembership` so that they
+can initiate workflows in their own right.
+
+`ProgrammeAccreditationScope` (scoping an `AccreditingBodyIdentifier` to a
+programme with a validity window) follows the same structural pattern
+and also lives in `accounts` as part of the scoping layer.
+
+---
+
+### 6.4 Settings split
+
+- `settings/base.py` — installed apps, middleware stack, database,
+  Celery, logging
+- `settings/dev.py` — `DEBUG=True`, Waitress, local Redis
 - `settings/prod.py` — Gunicorn, secure cookies, HSTS
 
-### 5.3 Middleware order
+### 6.5 Middleware order
 
 ```python
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'core.middleware.TenantMiddleware',  # resolves tenant, sets ContextVar
+    'core.middleware.TenantMiddleware',  # resolves tenant from subdomain, sets ContextVar
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'core.middleware.TenantMembershipMiddleware',  # sets request.tenant_roles
+    'core.middleware.TenantMembershipMiddleware',  # validates membership, sets request.tenant_roles
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -470,9 +785,9 @@ MIDDLEWARE = [
 
 ---
 
-## 6. Celery configuration
+## 7. Celery configuration
 
-### 6.1 Named queues
+### 7.1 Named queues
 
 | Queue           | Purpose                          | Concurrency |
 |-----------------|----------------------------------|-------------|
@@ -482,7 +797,7 @@ MIDDLEWARE = [
 | `llm`           | LLM inference tasks (deferred)   | 1           |
 | `reports`       | PDF/report generation (deferred) | 2           |
 
-### 6.2 Tenant context in tasks
+### 7.2 Tenant context in tasks
 
 Pass `tenant_id` explicitly to all tasks. Restore `ContextVar` via a
 base task class:
@@ -507,15 +822,15 @@ implementation code. Ensure referenced fields exist on core models.
 
 ---
 
-## 7. Document dependency graph and scheduling
+## 8. Document dependency graph and scheduling
 
-### 7.1 Overview
+### 8.1 Overview
 
 Publication targets drive backwards scheduling across the document
 dependency graph to generate initiation tasks and deadlines.
 Built on top of NetworkX.
 
-### 7.2 Dependencies in code
+### 8.2 Dependencies in code
 
 ```python
 # workflows/dependencies.py
@@ -553,7 +868,7 @@ deployment, require developer review, and benefit from version control.
 Validate at startup: every `DocumentType` value must have a registered
 content model and a registered FSM.
 
-### 7.3 Scaffold models (Phase 1 — fields only, no logic)
+### 8.3 Scaffold models (Phase 1 — fields only, no logic)
 
 ```python
 class PublicationTarget(models.Model):
@@ -719,9 +1034,9 @@ class TransitionDuration(models.Model):
 
 ---
 
-## 8. Frontend and visualisation
+## 9. Frontend and visualisation
 
-### 8.1 Pipeline visualisation
+### 9.1 Pipeline visualisation
 
 Workflow stages are rendered as a horizontal pipeline.
 Reference implementation: `static/js/workflow_pipeline.js`.
@@ -734,7 +1049,7 @@ Reference implementation: `static/js/workflow_pipeline.js`.
 - Stage nodes accept `required_documents` array for Bootstrap popover.
 - All colours via Bootstrap CSS variables for theme consistency.
 
-### 8.2 Pipeline JSON contract
+### 9.2 Pipeline JSON contract
 
 Django views produce this shape. The renderer is a pure function of it.
 
@@ -784,7 +1099,7 @@ Django views produce this shape. The renderer is a pure function of it.
 
 ---
 
-## 9. LLM integration (deferred — Phase 5)
+## 10. LLM integration (deferred — Phase 5)
 
 All LLM tasks are Celery tasks on the `llm` queue. They are async,
 never blocking the request cycle. Outputs are always persisted to
@@ -832,18 +1147,39 @@ Absence of an LLM result never blocks a workflow transition.
 1. Add value to `Document.DocumentType`
 2. Create content model in `documents/models/`, following
    `ModuleSpecificationContent`
-3. Register in `documents/registry.py`
+3. Register in `documents/registry.py` — including the FK path to
+   `ModuleIdentifier` if the document type is anchored to a module
+   (see `resolve_module_identifier` in `workflows/hooks.py`)
 4. Define FSM in `workflows/fsm/` — include `generates_milestone` and
    `estimated_days` on all primary pathway transitions
 5. Declare document dependencies in `workflows/dependencies.py`
-6. Add admin registration
-7. Generate and apply migration
-8. Add tests following `tests/documents/test_module_spec.py`
+6. **Register the publication hook** — ensure the FSM publication
+   transition calls `on_document_published(document)`. If this step
+   is omitted, `ModuleIdentifier.last_published_at` and
+   `ProgrammeIdentifier.last_published_at` will not reflect changes
+   made via this document type. This is a silent correctness failure,
+   not a runtime error.
+7. **Register the workflow lifecycle hooks** — if the document type
+   is anchored to a `ModuleIdentifier`, ensure the FSM calls
+   `on_workflow_opened(document)` when a `WorkflowInstance` is first
+   created, and `on_workflow_closed(document)` when any
+   `WorkflowInstance` reaches a terminal state. If either hook is
+   omitted, `ModuleIdentifier.has_in_flight_workflow` and
+   `ProgrammeIdentifier.has_in_flight_workflow` will be incorrect.
+   This is a silent correctness failure, not a runtime error. Add a
+   test that opening and closing a workflow on a document of this type
+   correctly sets and clears `has_in_flight_workflow` on the associated
+   `ModuleIdentifier`.
+8. Add admin registration
+9. Generate and apply migration
+10. Add tests following `tests/documents/test_module_spec.py`, including
+    a test that publication of a document of this type updates
+    `last_published_at` on the associated `ModuleIdentifier`
 
 ### Adding a new workflow form
 
 Forms are `Document` records with `classification=WORKFLOW_FORM`.
-Follow the document type checklist, then additionally:
+Follow the document type checklist above, then additionally:
 
 1. Add `target_document` FK on the content model pointing to the
    document the form acts upon

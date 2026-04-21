@@ -285,15 +285,19 @@ RegulatoryDocument.objects.filter(
 
 ### `ProgrammeIdentifier`
 
-| Field        | Type                      | Notes                                                  |
-|--------------|---------------------------|--------------------------------------------------------|
-| `id`         | PK                        |                                                        |
-| `tenant`     | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()` |
-| `department` | FK → DepartmentIdentifier |                                                        | 
-| `code`       | CharField                 | unique code, matches institutional code, e.g. F3058U   |
-| `name`       | CharField                 | programme name                                         |
-| `type`       | CharField                 | `TextChoices`:'UG', 'PGT', 'PGR'                       |
-| `moa`        | CharField                 | `TextChoices`: 'FT', 'PT', 'Mixed'                     |
+| Field                              | Type                      | Notes                                                                                                                                                                                                                               |
+|------------------------------------|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                               | PK                        |                                                                                                                                                                                                                                     |
+| `tenant`                           | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()`                                                                                                                                                                              |
+| `department`                       | FK → DepartmentIdentifier |                                                                                                                                                                                                                                     | 
+| `code`                             | CharField                 | unique code, matches institutional code, e.g. F3058U                                                                                                                                                                                |
+| `name`                             | CharField                 | programme name                                                                                                                                                                                                                      |
+| `type`                             | CharField                 | `TextChoices`:'UG', 'PGT', 'PGR'                                                                                                                                                                                                    |
+| `moa`                              | CharField                 | `TextChoices`: 'FT', 'PT', 'Mixed'                                                                                                                                                                                                  |
+| `last_published_at`                | DateTimeField (nullable)  | Most recent publication of any governed document in this programme's scope, including module-level events for modules belonging to this programme                                                                                   |
+| `last_published_document_type`     | CharField (nullable)      | `Document.DocumentType` value of that event                                                                                                                                                                                         |
+| `has_in_flight_workflow`           | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below.       |
+| `programme_spec_last_published_at` | DateTimeField (nullable)  | Set only when `ProgrammeSpecificationContent` publishes. Never updated by module-level events. Allows programme coordinators to distinguish "something in the programme changed" from "the programme specification itself changed." |
 
 **Constraints:** `unique_together = (code, tenant)`
 
@@ -301,19 +305,54 @@ RegulatoryDocument.objects.filter(
 `all_tenants = TenantScopedManager(require_tenant=False)`
 
 **Integrity note:** `department.tenant` must equal `tenant` — enforced in `clean()`.
+
+**Implementation note:**
+
+- The fields `last_published_at` and `last_published_document_type` are maintained by the FSM publication hook
+  (`on_document_published` in `workflows/hooks.py`) and must never be written directly outside that hook. See §4 for
+  the full update protocol and concurrency discipline.
+- `has_in_flight_workflow`: This field has a different update trigger from last_published_at and
+  last_published_document_type, which are updated only on publication. `has_in_flight_workflow` is updated by two
+  distinct FSM hooks:
+    - `on_workflow_opened(document)` — fired when a new `WorkflowInstance` is created for any governed document anchored
+      to this identifier. Sets `has_in_flight_workflow = True` unconditionally.
+    - `on_workflow_closed(document)` — fired when any `WorkflowInstance` for an anchored document reaches a terminal
+      state (`approved`, `withdrawn`, `rejected`, or any other configured terminal state). **Does not set
+      `has_in_flight_workflow = False` directly**. Instead, recomputes by checking whether any other anchored document
+      still has an open workflow, and sets the field accordingly.
+
+In `on_workflow_closed(document)`, the recomputation on close is necessary because other documents for the same module
+may still have open workflows. Setting False blindly on close would produce incorrect results when two workflows close
+concurrently or in rapid succession. Recomputation query:
+
+```python
+has_open = Document.objects.filter(
+    module_identifier=module,
+).exclude(
+    current_workflow__isnull=True,
+).filter(
+    current_workflow__state__in=NON_TERMINAL_STATES,
+).exists()
+```
+
+Both hooks are subject to the same `select_for_update()` discipline as `last_published_at`. See §4 in`DESIGN.md` for the
+concurrency rules.
 
 ---
 
 ### `ModuleIdentifier`
 
-| Field        | Type                      | Notes                                                  |
-|--------------|---------------------------|--------------------------------------------------------|
-| `id`         | PK                        |                                                        |
-| `tenant`     | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()` |
-| `department` | FK → DepartmentIdentifier |                                                        |
-| `code`       | CharField                 | unique code, matches institutional code, e.g. F3202    |
-| `name`       | CharField                 | module name (mutable)                                  |
-| `level`      | FK → FHEQLevel            | FHEQ level descriptor                                  |
+| Field                          | Type                      | Notes                                                                                                                                                                                                                         |
+|--------------------------------|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                           | PK                        |                                                                                                                                                                                                                               |
+| `tenant`                       | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()`                                                                                                                                                                        |
+| `department`                   | FK → DepartmentIdentifier |                                                                                                                                                                                                                               |
+| `code`                         | CharField                 | unique code, matches institutional code, e.g. F3202                                                                                                                                                                           |
+| `name`                         | CharField                 | module name (mutable)                                                                                                                                                                                                         |
+| `level`                        | FK → FHEQLevel            | FHEQ level descriptor                                                                                                                                                                                                         |
+| `last_published_at`            | DateTimeField (nullable)  | Timestamp of the most recent publication of any governed document anchored to this module                                                                                                                                     |
+| `last_published_document_type` | CharField (nullable)      | `Document.DocumentType` value of that publication event                                                                                                                                                                       |
+| `has_in_flight_workflow`       | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below. |
 
 **Constraints:** `unique_together = (code, tenant)`
 
@@ -321,6 +360,52 @@ RegulatoryDocument.objects.filter(
 `all_tenants = TenantScopedManager(require_tenant=False)`
 
 **Integrity note:** `department.tenant` must equal `tenant` — enforced in `clean()`.
+
+**Implementation note:**
+
+- The fields `last_published_at` and `last_published_document_type` are maintained by the FSM publication hook
+  (`on_document_published` in `workflows/hooks.py`) and must never be written directly outside that hook. See §4 for
+  the full update protocol and concurrency discipline.
+- `has_in_flight_workflow` is maintained by `on_workflow_opened` and `on_workflow_closed`. See the identical
+  implementation note on ProgrammeIdentifier for full details, including the recomputation query and concurrency
+  discipline.
+
+---
+
+### `ProgrammeModuleMembership`
+
+Join table expressing the many-to-many relationship between programmes
+and modules. A module may belong to multiple programmes; a programme
+contains multiple modules. This table is the anchor for discovery
+queries ("all modules on this programme") and for programme-level
+denormalised field propagation (`last_published_at` on
+`ProgrammeIdentifier`).
+
+| Field       | Type                     | Notes                                                                          |
+|-------------|--------------------------|--------------------------------------------------------------------------------|
+| `id`        | PK                       |                                                                                |
+| `tenant`    | FK → Tenant              | Must equal both `programme.tenant` and `module.tenant` — enforced in `clean()` |
+| `programme` | FK → ProgrammeIdentifier | `related_name='module_memberships'`                                            |
+| `module`    | FK → ModuleIdentifier    | `related_name='programme_memberships'`                                         |
+
+**Constraints:** `unique_together = (programme, module)`
+
+**Managers:** `objects = TenantScopedManager()`,
+`all_tenants = TenantScopedManager(require_tenant=False)`
+
+**Query patterns:**
+
+```python
+# All modules on a programme
+ModuleIdentifier.objects.filter(
+    programme_memberships__programme=programme
+)
+
+# All programmes a module belongs to
+ProgrammeIdentifier.objects.filter(
+    module_memberships__module=module
+)
+```
 
 ---
 
@@ -328,7 +413,7 @@ RegulatoryDocument.objects.filter(
 
 A typed registry entry for each assessment within a module. Created when
 a module is established. Retired rather than deleted when an assessment
-is removed, so that historical assessment brief documents retain a valid
+is removed, so that historical assessment documents retain a valid
 reference.
 
 | Field             | Type                  | Notes                                                  |
@@ -403,7 +488,7 @@ department, or tenant level — exactly one of `faculty`, `school`, or
 
 A professional or statutory accrediting body. Global — not
 tenant-scoped. Programme-level accreditation is expressed via
-`ProgrammeAccreditation`.
+`ProgrammeAccreditationScope`.
 
 | Field          | Type                | Notes                       |
 |----------------|---------------------|-----------------------------|
@@ -556,25 +641,172 @@ separate table linked by `OneToOneField`.
 
 ---
 
+### `Document.DocumentType` values
+
+| Value               | Content model                   | Notes                                                               |
+|---------------------|---------------------------------|---------------------------------------------------------------------|
+| `module_spec`       | `ModuleSpecificationContent`    |                                                                     |
+| `programme_spec`    | `ProgrammeSpecificationContent` |                                                                     |
+| `assessment`        | `AssessmentContent`             | Covers all assessment formats (exam, coursework, problem set, etc.) |
+| `learning_outcome`  | `LearningOutcomeContent`        |                                                                     |
+| `teaching_activity` | `TeachingActivityContent`       | Multiple may be approved simultaneously per module                  |
+| `reaccreditation`   | `ReaccreditationContent`        |                                                                     |
+| `module_requisite`  | `ModuleRequisiteContent`        | **Deferred** — governance model TBD with curriculum team            |
+| `curriculum_review` | `CurriculumReviewContent`       | **Deferred** — follows same pattern as `reaccreditation`            |
+
+---
+
 ### `[Type]Content` (one table per document type)
 
 Each document type has exactly one content model. The pattern is
 always a `OneToOneField(Document, related_name='[type]')`.
 Content models carry only type-specific fields.
 
-**Example: `ModuleSpecificationContent`**
+---
 
-| Field           | Type                     | Notes                        |
-|-----------------|--------------------------|------------------------------|
-| `id`            | PK                       |                              |
-| `document`      | OneToOneField → Document | `related_name='module_spec'` |
-| `credit_points` | PositiveIntegerField     |                              |
-| `level`         | FK → FHEQLevel           | FHEQ level                   |
-| `subject_area`  | CharField                |                              |
+### `ModuleSpecificationContent` — known fields to date
+
+> **Note:** This field list is incomplete pending full specification
+> work with the curriculum team. The placeholder in `DESIGN.md` §3.2
+> (`credit_points`, `level`, `subject_area`) should be treated as a
+> structural example only, not as the authoritative field list.
+
+Fields settled in design discussions so far:
+
+| Field           | Type                     | Notes                                                                                                                                                                                               |
+|-----------------|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`            | PK                       |                                                                                                                                                                                                     |
+| `document`      | OneToOneField → Document | `related_name='module_spec'`                                                                                                                                                                        |
+| `credit_points` | PositiveIntegerField     |                                                                                                                                                                                                     |
+| `level`         | FK → FHEQLevel           | FHEQ level. FK to controlled vocabulary, not free CharField.                                                                                                                                        |
+| `subject_area`  | CharField                |                                                                                                                                                                                                     |
+| `period`        | FK → PeriodIdentifier    | Delivery semester. Modules currently run across all `PeriodUnitIdentifier` records within this period. If partial-period delivery is introduced, add a M2M to `PeriodUnitIdentifier` at that point. |
+| `outline`       | TextField                | Module outline. Stored as HTML (WYSIWYG editor input). May be diffed between versions for change request review UI.                                                                                 |
+
+The associations between a module specification and its learning
+outcomes, assessments, and teaching activity patterns are
+navigated via `ModuleIdentifier`, not via FKs on this model. The
+module specification page is a dashboard view that assembles the
+current approved state of all governed objects anchored to the
+`ModuleIdentifier` — it does not own them.
+
+---
+
+### `TeachingActivityContent`
+
+A governed document describing one type of teaching activity delivered
+as part of a module. Anchored to `ModuleIdentifier`. Has its own FSM
+and `AssetVersion` history.
+
+Multiple `TeachingActivityContent` documents can be in the `APPROVED`
+state simultaneously for the same module — one per activity type. The
+current approved teaching pattern for a module is therefore a queryset
+filtered by `module_identifier` and current approved state, not a
+single object.
+
+There is no slot registry for teaching activities (contrast with
+`AssessmentSlotIdentifier`). Teaching patterns are ephemeral: no other
+governed document needs to reference a specific teaching activity as a
+stable anchor.
+
+| Field            | Type                     | Notes                                                                      |
+|------------------|--------------------------|----------------------------------------------------------------------------|
+| `id`             | PK                       |                                                                            |
+| `document`       | OneToOneField → Document | `related_name='teaching_activity'`                                         |
+| `module`         | FK → ModuleIdentifier    | `related_name='teaching_activities'`                                       |
+| `activity_type`  | CharField                | `TextChoices`: `lecture`, `workshop`, `seminar`, `lab`, `other`            |
+| `duration_hours` | DecimalField             | Duration of a single occurrence in hours. `max_digits=4, decimal_places=1` |
+| `period`         | FK → PeriodIdentifier    | The period this pattern applies to                                         |
+| `ordering`       | PositiveIntegerField     | Display order within the module's activity list                            |
+
+**Constraints:** No uniqueness constraint on `(module, activity_type)`
+— a module may have multiple activities of the same type (e.g. two
+distinct lecture patterns).
+
+**Managers:** `objects = TenantScopedManager()`,
+`all_tenants = TenantScopedManager(require_tenant=False)`
+
+**Derived property — week pattern string:**
+
+```python
+@property
+def week_pattern(self):
+    """
+    Returns the week pattern as a digit string, e.g. '33333333333'.
+    Position i (0-based) = occurrences in PeriodUnitIdentifier at
+    sequence i+1. Suitable for display and timetabling export.
+    """
+    weeks = self.weeks.select_related('period_unit').order_by(
+        'period_unit__sequence'
+    )
+    return ''.join(str(w.occurrences) for w in weeks)
+
+
+@property
+def total_contact_hours(self):
+    return sum(
+        w.occurrences * self.duration_hours for w in self.weeks.all()
+    )
+```
+
+**Integrity note:** `document.tenant` must equal `module.tenant` —
+enforced in `clean()`.
+
+**Implementation note:** The timetabling spreadsheet export reads
+`week_pattern` as a derived property. Queries such as "all teaching
+activities in Week 7" operate on `TeachingActivityWeek` directly, not
+on the pattern string.
+
+---
+
+### `TeachingActivityWeek`
+
+Child table of `TeachingActivityContent`. One row per
+`PeriodUnitIdentifier` in which the activity occurs. Provides an
+indexed query anchor for week-level queries (e.g. "all activities in
+Week 7"), which cannot be answered efficiently by parsing the week
+pattern string.
+
+| Field         | Type                         | Notes                                                                                          |
+|---------------|------------------------------|------------------------------------------------------------------------------------------------|
+| `id`          | PK                           |                                                                                                |
+| `activity`    | FK → TeachingActivityContent | `related_name='weeks'`, `on_delete=CASCADE`                                                    |
+| `period_unit` | FK → PeriodUnitIdentifier    | The specific week this row describes                                                           |
+| `occurrences` | PositiveSmallIntegerField    | Number of times this activity occurs in this week. The digit value in the week pattern string. |
+
+**Constraints:** `unique_together = (activity, period_unit)`
+
+**Validation:** `len(activity.weeks) == activity.period.units.count()`
+at save time — the week set must cover all units in the activity's
+period exactly once. Enforced in `TeachingActivityContent.clean()`.
+
+**Week-level query pattern:**
+
+```python
+# All teaching activities occurring in a specific week
+TeachingActivityWeek.objects.filter(
+    period_unit=week,
+    occurrences__gt=0,
+).select_related('activity__module')
+```
+
+---
+
+### `ModuleRequisite` — deferred
+
+> **Deferred pending curriculum team input.** A requisite relationship
+> (pre-requisite or co-requisite between two modules) requires a
+> governance workflow. The document type and FSM are to be defined
+> after consultation with the curriculum team on whether requisite
+> changes go through a standalone workflow or as part of a module
+> specification change request.
+>
+> No slot registry is needed — requisite relationships do not have the
+> slot identity problem that assessments have.
 
 **Other content models follow the same pattern:**
-`ProgrammeSpecificationContent`, `AssessmentBriefContent`,
-`LearningOutcomeContent`, `ConsultationFormContent`, etc.
+`ProgrammeSpecificationContent`, `AssessmentContent`,
+`LearningOutcomeContent`, etc.
 
 **Accessing content:**
 
