@@ -672,7 +672,7 @@ upward imports.
 |              | `ModuleIdentifier`, `AssessmentSlotIdentifier`,                  |
 |              | `FHEQLevel`, `CommitteeIdentifier`, `AccreditingBodyIdentifier`, |
 |              | `ProgrammeAccreditationScope`, `RegulatoryDocument`,             |
-|              | `PeriodIdentifier`, `PeriodUnitIdentifier`                       |
+|              | `PeriodIdentifier`, `PeriodWeekIdentifier`                       |
 | `documents`  | `Document` envelope, all `[Type]Content` content models,         |
 |              | `documents/registry.py` (type → content model + relation name    |
 |              | mapping, `resolve_module_identifier`), document-type FSM         |
@@ -733,7 +733,7 @@ class RegistryModel(models.Model):
 ```
 
 Not every registry model fits this exactly — `PeriodIdentifier` and
-`PeriodUnitIdentifier` use sequence-managed ordering rather than a
+`PeriodWeekIdentifier` use sequence-managed ordering rather than a
 `code` field; `FHEQLevel` and `AccreditingBodyIdentifier` are global
 rather than tenant-scoped — but the pattern is the baseline.
 

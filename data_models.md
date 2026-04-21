@@ -150,23 +150,22 @@ PeriodIdentifier.reorder(tenant, ordered_ids=[3, 1, 2])
 
 ---
 
-### `PeriodUnitIdentifier`
+### `PeriodWeekIdentifier`
 
-A defined interval within a period — usually a week, but the model
-does not assume this. Units are ordered within their parent period by
-`sequence`, managed through the same two-pass pattern as
-`PeriodIdentifier`.
+A defined interval within a period, taken to be a week.
+Weeks are ordered within their parent period by `sequence`,
+managed through the same two-pass pattern as `PeriodIdentifier`.
 
 | Field      | Type                  | Notes                                              |
 |------------|-----------------------|----------------------------------------------------|
 | `id`       | PK                    |                                                    |
 | `tenant`   | FK → Tenant           | Must equal `period.tenant` — enforced in `clean()` |
-| `period`   | FK → PeriodIdentifier | `related_name='units'`                             |
+| `period`   | FK → PeriodIdentifier | `related_name='weeks'`                             |
 | `name`     | CharField             | e.g. `Week 1`, `Intersemester Week`                |
 | `sequence` | PositiveIntegerField  | Managed — use `reorder()` / `append()`             |
 
 **Constraints:** `unique_together = (name, period)`,
-`UniqueConstraint(period, sequence)` — enforces no two units share a
+`UniqueConstraint(period, sequence)` — enforces no two weeks share a
 position within the same period
 
 **Ordering:** `sequence ASC`
@@ -175,10 +174,10 @@ position within the same period
 
 ```python
 # Append a new unit at the end of this period
-PeriodUnitIdentifier.append(period, name="Week 12")
+PeriodWeekIdentifier.append(period, name="Week 12")
 
 # Reassign positions 1..N within a period
-PeriodUnitIdentifier.reorder(period, ordered_ids=[5, 1, 2, 3, 4])
+PeriodWeekIdentifier.reorder(period, ordered_ids=[5, 1, 2, 3, 4])
 ```
 
 **Sequencing implementation note:**
@@ -195,7 +194,7 @@ Note `scope_field` below is pseudocode.
 @classmethod
 def reorder(cls, scope, ordered_ids: list[int]) -> None:
     # `scope` is `tenant` for PeriodIdentifier,
-    #            `period`  for PeriodUnitIdentifier
+    #            `period`  for PeriodWeekIdentifier
     with transaction.atomic():
         qs = cls.objects.filter(**{scope_field: scope})
         qs.update(sequence=models.F('sequence') + len(ordered_ids) + 1000)
@@ -350,6 +349,7 @@ concurrency rules.
 | `code`                         | CharField                 | unique code, matches institutional code, e.g. F3202                                                                                                                                                                           |
 | `name`                         | CharField                 | module name (mutable)                                                                                                                                                                                                         |
 | `level`                        | FK → FHEQLevel            | FHEQ level descriptor                                                                                                                                                                                                         |
+| `module_type`                  | CharField                 | `TextChoices`: `course`, `dissertation`, `project`, `placement`. Vocabulary provisional — to be confirmed with stakeholders                                                                                                   |
 | `last_published_at`            | DateTimeField (nullable)  | Timestamp of the most recent publication of any governed document anchored to this module                                                                                                                                     |
 | `last_published_document_type` | CharField (nullable)      | `Document.DocumentType` value of that publication event                                                                                                                                                                       |
 | `has_in_flight_workflow`       | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below. |
@@ -662,158 +662,8 @@ Each document type has exactly one content model. The pattern is
 always a `OneToOneField(Document, related_name='[type]')`.
 Content models carry only type-specific fields.
 
----
-
-### `ModuleSpecificationContent` — known fields to date
-
-> **Note:** This field list is incomplete pending full specification
-> work with the curriculum team. The placeholder in `DESIGN.md` §3.2
-> (`credit_points`, `level`, `subject_area`) should be treated as a
-> structural example only, not as the authoritative field list.
-
-Fields settled in design discussions so far:
-
-| Field           | Type                     | Notes                                                                                                                                                                                               |
-|-----------------|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`            | PK                       |                                                                                                                                                                                                     |
-| `document`      | OneToOneField → Document | `related_name='module_spec'`                                                                                                                                                                        |
-| `credit_points` | PositiveIntegerField     |                                                                                                                                                                                                     |
-| `level`         | FK → FHEQLevel           | FHEQ level. FK to controlled vocabulary, not free CharField.                                                                                                                                        |
-| `subject_area`  | CharField                |                                                                                                                                                                                                     |
-| `period`        | FK → PeriodIdentifier    | Delivery semester. Modules currently run across all `PeriodUnitIdentifier` records within this period. If partial-period delivery is introduced, add a M2M to `PeriodUnitIdentifier` at that point. |
-| `outline`       | TextField                | Module outline. Stored as HTML (WYSIWYG editor input). May be diffed between versions for change request review UI.                                                                                 |
-
-The associations between a module specification and its learning
-outcomes, assessments, and teaching activity patterns are
-navigated via `ModuleIdentifier`, not via FKs on this model. The
-module specification page is a dashboard view that assembles the
-current approved state of all governed objects anchored to the
-`ModuleIdentifier` — it does not own them.
-
----
-
-### `TeachingActivityContent`
-
-A governed document describing one type of teaching activity delivered
-as part of a module. Anchored to `ModuleIdentifier`. Has its own FSM
-and `AssetVersion` history.
-
-Multiple `TeachingActivityContent` documents can be in the `APPROVED`
-state simultaneously for the same module — one per activity type. The
-current approved teaching pattern for a module is therefore a queryset
-filtered by `module_identifier` and current approved state, not a
-single object.
-
-There is no slot registry for teaching activities (contrast with
-`AssessmentSlotIdentifier`). Teaching patterns are ephemeral: no other
-governed document needs to reference a specific teaching activity as a
-stable anchor.
-
-| Field            | Type                     | Notes                                                                      |
-|------------------|--------------------------|----------------------------------------------------------------------------|
-| `id`             | PK                       |                                                                            |
-| `document`       | OneToOneField → Document | `related_name='teaching_activity'`                                         |
-| `module`         | FK → ModuleIdentifier    | `related_name='teaching_activities'`                                       |
-| `activity_type`  | CharField                | `TextChoices`: `lecture`, `workshop`, `seminar`, `lab`, `other`            |
-| `duration_hours` | DecimalField             | Duration of a single occurrence in hours. `max_digits=4, decimal_places=1` |
-| `period`         | FK → PeriodIdentifier    | The period this pattern applies to                                         |
-| `ordering`       | PositiveIntegerField     | Display order within the module's activity list                            |
-
-**Constraints:** No uniqueness constraint on `(module, activity_type)`
-— a module may have multiple activities of the same type (e.g. two
-distinct lecture patterns).
-
-**Managers:** `objects = TenantScopedManager()`,
-`all_tenants = TenantScopedManager(require_tenant=False)`
-
-**Derived property — week pattern string:**
-
-```python
-@property
-def week_pattern(self):
-    """
-    Returns the week pattern as a digit string, e.g. '33333333333'.
-    Position i (0-based) = occurrences in PeriodUnitIdentifier at
-    sequence i+1. Suitable for display and timetabling export.
-    """
-    weeks = self.weeks.select_related('period_unit').order_by(
-        'period_unit__sequence'
-    )
-    return ''.join(str(w.occurrences) for w in weeks)
-
-
-@property
-def total_contact_hours(self):
-    return sum(
-        w.occurrences * self.duration_hours for w in self.weeks.all()
-    )
-```
-
-**Integrity note:** `document.tenant` must equal `module.tenant` —
-enforced in `clean()`.
-
-**Implementation note:** The timetabling spreadsheet export reads
-`week_pattern` as a derived property. Queries such as "all teaching
-activities in Week 7" operate on `TeachingActivityWeek` directly, not
-on the pattern string.
-
----
-
-### `TeachingActivityWeek`
-
-Child table of `TeachingActivityContent`. One row per
-`PeriodUnitIdentifier` in which the activity occurs. Provides an
-indexed query anchor for week-level queries (e.g. "all activities in
-Week 7"), which cannot be answered efficiently by parsing the week
-pattern string.
-
-| Field         | Type                         | Notes                                                                                          |
-|---------------|------------------------------|------------------------------------------------------------------------------------------------|
-| `id`          | PK                           |                                                                                                |
-| `activity`    | FK → TeachingActivityContent | `related_name='weeks'`, `on_delete=CASCADE`                                                    |
-| `period_unit` | FK → PeriodUnitIdentifier    | The specific week this row describes                                                           |
-| `occurrences` | PositiveSmallIntegerField    | Number of times this activity occurs in this week. The digit value in the week pattern string. |
-
-**Constraints:** `unique_together = (activity, period_unit)`
-
-**Validation:** `len(activity.weeks) == activity.period.units.count()`
-at save time — the week set must cover all units in the activity's
-period exactly once. Enforced in `TeachingActivityContent.clean()`.
-
-**Week-level query pattern:**
-
-```python
-# All teaching activities occurring in a specific week
-TeachingActivityWeek.objects.filter(
-    period_unit=week,
-    occurrences__gt=0,
-).select_related('activity__module')
-```
-
----
-
-### `ModuleRequisite` — deferred
-
-> **Deferred pending curriculum team input.** A requisite relationship
-> (pre-requisite or co-requisite between two modules) requires a
-> governance workflow. The document type and FSM are to be defined
-> after consultation with the curriculum team on whether requisite
-> changes go through a standalone workflow or as part of a module
-> specification change request.
->
-> No slot registry is needed — requisite relationships do not have the
-> slot identity problem that assessments have.
-
-**Other content models follow the same pattern:**
-`ProgrammeSpecificationContent`, `AssessmentContent`,
-`LearningOutcomeContent`, etc.
-
-**Accessing content:**
-
-```python
-doc = Document.objects.select_related('module_spec').get(pk=pk)
-content = doc.module_spec  # single indexed join, no second query
-```
+Please read `document_models.md` for detailed descriptions of the
+content models.
 
 ---
 
