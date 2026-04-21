@@ -694,6 +694,7 @@ class MilestoneOverlap(models.Model):
 
 
 class CommitteeMeeting(models.Model):
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
     committee = models.ForeignKey(
         'CommitteeIdentifier', on_delete=models.PROTECT)
     meeting_date = models.DateField()
@@ -702,6 +703,7 @@ class CommitteeMeeting(models.Model):
 
 
 class TransitionDuration(models.Model):
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
     workflow_type = models.CharField(max_length=100)
     transition_event = models.CharField(max_length=100)
     duration_type = models.CharField(max_length=20)  # days | committee
