@@ -29,17 +29,18 @@ Resolved from the request subdomain, not from the authenticated user.
 Links a global user to a tenant with a specific role. A user may
 belong to multiple tenants (e.g. external examiners), and have
 multiple roles within a single tenant (e.g. it's possible to have
-`convenor` and `tlc` or `tlc_chair` roles).
+`convenor`, `reviewer`, and possibly a combination of  `*_tlc` or
+`*_tlc_chair` roles).
 
-| Field       | Type         | Notes                                                                                                                                                                                                                                                                                                                     |
-|-------------|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`        | PK           |                                                                                                                                                                                                                                                                                                                           |
-| `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                        |
-| `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                           |
-| `role`      | CharField    | `TextChoices`: `convenor`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `programme_coordinator` |
-| `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                           |
+| Field       | Type         | Notes                                                                                                                                                                                                                                                                                                                                 |
+|-------------|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`        | PK           |                                                                                                                                                                                                                                                                                                                                       |
+| `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                                    |
+| `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                                       |
+| `role`      | CharField    | `TextChoices`: `convenor`, `reviewer`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `programme_coordinator` |
+| `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                                       |
 
-**Constraints:** `unique_together = (user, tenant, role)`
+**Constraints:** `unique_together = (user, role, tenant)`
 
 ---
 
@@ -95,13 +96,13 @@ own committees that approve certain types of document.
 Organizational unit. Owns programmes and modules. May have its own committees that
 approve certain types of document.
 
-| Field     | Type                             | Notes                                               |
-|-----------|----------------------------------|-----------------------------------------------------|
-| `id`      | PK                               |                                                     | 
-| `tenant`  | FK → Tenant                      | Must equal `faculty.tenant` — enforced in `clean()` |
-| `faculty` | FK → FacultyIdentifier           |                                                     |
-| `school`  | FK → SchoolIdentifier (nullable) | Optional. Schools may not be used.                  |
-| `name`    | CharField                        |                                                     |
+| Field     | Type                             | Notes                                                                                     |
+|-----------|----------------------------------|-------------------------------------------------------------------------------------------|
+| `id`      | PK                               |                                                                                           | 
+| `tenant`  | FK → Tenant                      | Must equal `faculty.tenant`, and also `school.tenant` if not null — enforced in `clean()` |
+| `faculty` | FK → FacultyIdentifier           |                                                                                           |
+| `school`  | FK → SchoolIdentifier (nullable) | Optional. Schools may not be used.                                                        |
+| `name`    | CharField                        |                                                                                           |
 
 **Constraints:** `unique_together = (name, faculty, tenant)`,
 `unique_together = (name, school)` where `school` is non-null — a
@@ -187,6 +188,8 @@ avoid transient constraint violations when renumbering. Pass 1 shifts
 all existing positions to a high offset (`current + 1000`); pass 2
 assigns the final 1..N values. Direct assignment to `sequence` outside
 these methods is not safe and should be avoided.
+
+Note `scope_field` below is pseudocode.
 
 ```python
 @classmethod
@@ -437,7 +440,12 @@ UniqueConstraint(
 **Managers:** `objects = TenantScopedManager()`,
 `all_tenants = TenantScopedManager(require_tenant=False)`
 
-**Integrity note:** `tenant` must equal `programme.tenant` – enforced in `clean()`
+**Integrity note:** `tenant` must equal `programme.tenant` – enforced in `clean()`.
+
+**Implementation note:** `ProgrammeConvenorScope` records should not be created directly. Use
+`ProgrammeConvenorScope.create_for_user(programme, user, valid_from)`, which atomically creates the scope record and
+ensures the user has a convenor `TenantMembership` for the tenant, creating one if absent. The `clean()` method
+validates that the membership exists but cannot enforce the atomic creation.
 
 ---
 
@@ -465,7 +473,12 @@ UniqueConstraint(
 **Managers:** `objects = TenantScopedManager()`,
 `all_tenants = TenantScopedManager(require_tenant=False)`
 
-**Integrity note:** `tenant` must equal `module.tenant` – enforced in `clean()`
+**Integrity note:** `tenant` must equal `module.tenant` – enforced in `clean()`.
+
+**Implementation note:** `ModuleConvenorScope` records should not be created directly. Use
+`ModuleConvenorScope.create_for_user(module, user, valid_from)`, which atomically creates the scope record and
+ensures the user has a convenor `TenantMembership` for the tenant, creating one if absent. The `clean()` method
+validates that the membership exists but cannot enforce the atomic creation.
 
 ---
 
@@ -556,7 +569,7 @@ Content models carry only type-specific fields.
 | `id`            | PK                       |                              |
 | `document`      | OneToOneField → Document | `related_name='module_spec'` |
 | `credit_points` | PositiveIntegerField     |                              |
-| `level`         | CharField                | FHEQ level                   |
+| `level`         | FK → FHEQLevel           | FHEQ level                   |
 | `subject_area`  | CharField                |                              |
 
 **Other content models follow the same pattern:**
@@ -725,19 +738,22 @@ caused which version action.
 A desired outcome with a target date. Drives the backwards
 scheduler. All scheduled milestones are grouped under this entity.
 
-| Field                  | Type                     | Notes                              |
-|------------------------|--------------------------|------------------------------------|
-| `id`                   | PK                       |                                    |
-| `tenant`               | FK → Tenant              |                                    |
-| `label`                | CharField                | e.g. `AY 2029/30 programme review` |
-| `description`          | TextField                |                                    |
-| `target_document_type` | CharField                | The terminal document type         |
-| `target_state`         | CharField                | The required terminal state        |
-| `target_date`          | DateField                |                                    |
-| `owner`                | FK → User                | Programme coordinator              |
-| `programme`            | FK → Document (nullable) | Anchor document if applicable      |
-| `is_active`            | BooleanField             |                                    |
-| `created_at`           | DateTimeField            | auto                               |
+| Field                  | Type                                | Notes                                                                                                              |
+|------------------------|-------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| `id`                   | PK                                  |                                                                                                                    |
+| `tenant`               | FK → Tenant                         |                                                                                                                    |
+| `label`                | CharField                           | e.g. `AY 2029/30 programme review`                                                                                 |
+| `description`          | TextField                           |                                                                                                                    |
+| `target_document_type` | CharField                           | The terminal document type                                                                                         |
+| `target_state`         | CharField                           | The required terminal state                                                                                        |
+| `target_date`          | DateField                           |                                                                                                                    |
+| `owner`                | FK → User                           | Usually the programme coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
+| `programme`            | FK → ProgrammeIdentifier (nullable) | If set, this target belongs to the specified programme. Unanchored targets are allowed.                            |
+| `is_active`            | BooleanField                        |                                                                                                                    |
+| `created_at`           | DateTimeField                       | auto                                                                                                               |
+
+**Implementation note:** if `programme` is not null, `tenant` must equal `programme.tenant`.
+Enforced in `clean()`.
 
 ---
 
@@ -828,10 +844,7 @@ went. This means the full coordination history is visible in one place:
 what was identified, what the relationship was judged to be, and what
 action (if any) was taken.
 
-Exactly one of `milestone_b` or `workflow_instance` is set, except when
-`character` is `gap` — indicating a document identified as stale by the
-dependency graph for which no workflow is yet active — in which case both
-are null.
+Exactly one of `milestone_b` or `workflow_instance` is set.
 
 | Field                  | Type                               | Notes                                                                                    |
 |------------------------|------------------------------------|------------------------------------------------------------------------------------------|
@@ -839,10 +852,10 @@ are null.
 | `milestone_a`          | FK → ScheduledMilestone            | The milestone being coordinated — always set. `related_name='overlaps_as_a'`             |
 | `milestone_b`          | FK → ScheduledMilestone (nullable) | Set when overlap is with a milestone from another target. `related_name='overlaps_as_b'` |
 | `workflow_instance`    | FK → WorkflowInstance (nullable)   | Set when overlap is with a free-standing in-flight workflow                              |
-| `character`            | CharField                          | `compatible`, `incompatible`, `deadline_risk`, `gap`                                     |
+| `character`            | CharField                          | `TextChoices`: `compatible`, `incompatible`, `deadline_risk`                             |
 | `explanation`          | TextField                          | Human-readable; surfaced in coordinator UI                                               |
 | `decision_required_by` | DateField (nullable)               | Populated for `deadline_risk` cases                                                      |
-| `resolution`           | CharField                          | `pending`, `linked`, `monitoring`, `dismissed`                                           |
+| `resolution`           | CharField                          | `TextChoices`: `pending`, `linked`, `monitoring`, `separate`, `dismissed`                |
 | `resolved_milestone`   | FK → ScheduledMilestone (nullable) | The milestone created or extended as a result of a `linked` decision                     |
 | `resolved_by`          | FK → User (nullable)               |                                                                                          |
 | `resolved_at`          | DateTimeField (nullable)           |                                                                                          |
@@ -851,16 +864,31 @@ are null.
 
 **Constraints:**
 
-- At most one of `milestone_b` / `workflow_instance` may be set — enforced
+- Exactly one of `milestone_b` / `workflow_instance` must be set — enforced
   in `clean()` and by a database check constraint
-- `character = 'gap'` requires both `milestone_b` and `workflow_instance`
-  to be null — enforced in `clean()`
 - `resolved_milestone` must be null unless `resolution = 'linked'` —
   enforced in `clean()`
-- `unique_together = (milestone_a, milestone_b)` where `milestone_b`
-  is non-null
-- `unique_together = (milestone_a, workflow_instance)` where
-  `workflow_instance` is non-null
+- `milestone_a` and `milestone_b` form a unique pair when `milestone_b` is not null.
+  Enforced in `clean()`.
+
+```python
+UniqueConstraint(
+    fields=['milestone_a', 'milestone_b'],
+    condition=Q(milestone_b__isnull=False),
+    name='unique_milestone_pair_overlap',
+)
+```
+
+- `milestone_a` and `workflow_instance)` form a unique pair when `workflow_instance` is not null
+  Enforced in `clean()`.
+
+```python
+UniqueConstraint(
+    fields=['milestone_a', 'workflow_instance'],
+    condition=Q(workflow_instance__isnull=False),
+    name='unique_milestone_workflow_overlap',
+)
+```
 
 **Character vocabulary:**
 
@@ -869,36 +897,19 @@ are null.
 | `compatible`    | The in-flight work can satisfy both targets; no deadline conflict   |
 | `incompatible`  | Separate documents are needed — the same document cannot serve both |
 | `deadline_risk` | Sharing is feasible but one target's deadline would be at risk      |
-| `gap`           | A stale document has no active workflow; action may be needed       |
 
 **Resolution vocabulary:**
 
-| Value        | Meaning                                                            |
-|--------------|--------------------------------------------------------------------|
-| `pending`    | No decision made yet                                               |
-| `linked`     | Folded into scheduling — `resolved_milestone` points at the result |
-| `monitoring` | Coordinator is aware and watching but not linking for scheduling   |
-| `dismissed`  | Out of scope; no further action needed                             |
+| Value        | Meaning                                                                     |
+|--------------|-----------------------------------------------------------------------------|
+| `pending`    | No decision made yet                                                        |
+| `linked`     | Folded into scheduling — `resolved_milestone` points at the result          |
+| `monitoring` | Coordinator is aware and watching but not linking for scheduling            |
+| `separate`   | A parallel document is needed. The in-flight work cannot serve this target. |
+| `dismissed`  | Out of scope; no further action needed                                      |
 
 **Indexes:** `(milestone_a,)`, `(milestone_b,)`, `(workflow_instance,)`,
 `(character, decision_required_by)`, `(resolution,)`
-
-
----
-
-### `CommitteeMeeting`
-
-Meeting dates and submission deadlines for governance committees.
-Used by the backwards scheduler to resolve committee-gated
-transition durations.
-
-| Field                 | Type           | Notes                            |
-|-----------------------|----------------|----------------------------------|
-| `id`                  | PK             |                                  |
-| `committee`           | FK → Committee |                                  |
-| `meeting_date`        | DateField      |                                  |
-| `submission_deadline` | DateField      | Latest date for paper submission |
-| `academic_year`       | CharField      | e.g. `2028/29`                   |
 
 ---
 
@@ -908,14 +919,18 @@ Stores estimated duration for each FSM transition on the primary
 pathway. Used by the backwards scheduler. Updated over time from
 historical `WorkflowEvent` timestamps.
 
-| Field              | Type                            | Notes                 |
-|--------------------|---------------------------------|-----------------------|
-| `id`               | PK                              |                       |
-| `workflow_type`    | CharField                       | FSM identifier        |
-| `transition_event` | CharField                       | Event name            |
-| `duration_type`    | CharField                       | `days` or `committee` |
-| `estimated_days`   | PositiveIntegerField (nullable) | For `days` type       |
-| `committee`        | FK → Committee (nullable)       | For `committee` type  |
+| Field              | Type                                | Notes                 |
+|--------------------|-------------------------------------|-----------------------|
+| `id`               | PK                                  |                       |
+| `tenant`           | FK → Tenant                         |                       |
+| `committee`        | FK → CommitteeIdentifier (nullable) | For `committee` type  |
+| `workflow_type`    | CharField                           | FSM identifier        |
+| `transition_event` | CharField                           | Event name            |
+| `duration_type`    | CharField                           | `days` or `committee` |
+| `estimated_days`   | PositiveIntegerField (nullable)     | For `days` type       |
+
+**Constraints:** If `committee` is not null, `tenant` must agree with
+`committee.tenant`. Enforced in `clean()`
 
 ---
 
@@ -932,7 +947,7 @@ surfaced in the UI, and always labelled with provenance.
 | `id`           | PK                       |                                                                                                |
 | `tenant`       | FK → Tenant              |                                                                                                |
 | `task_type`    | CharField                | `committee_screening`, `impact_analysis`, `form_draft`, `regulatory_check`, `schedule_summary` |
-| `subject_type` | CharField                | ContentType of the related object                                                              |
+| `subject_type` | ContentType              | ContentType of the related object                                                              |
 | `subject_id`   | PositiveIntegerField     | GenericForeignKey target                                                                       |
 | `model_name`   | CharField                | e.g. `qwen2.5:32b-q4`                                                                          |
 | `prompt_hash`  | CharField                | SHA256 of the prompt, for cache/dedup                                                          |
@@ -946,17 +961,22 @@ surfaced in the UI, and always labelled with provenance.
 
 ## Meetings and agenda
 
-### `Meeting`
+### `CommitteeMeeting`
 
-A governance committee meeting instance. Documents are linked
-to meetings via `AgendaItem`.
+Meeting dates and submission deadlines for governance committees.
+Used by the backwards scheduler to resolve committee-gated
+transition durations.
 
-| Field    | Type        | Notes |
-|----------|-------------|-------|
-| `id`     | PK          |       |
-| `tenant` | FK → Tenant |       |
-| `title`  | CharField   |       |
-| `date`   | DateField   |       |
+| Field                 | Type                     | Notes                            |
+|-----------------------|--------------------------|----------------------------------|
+| `id`                  | PK                       |                                  |
+| `tenant`              | FK → Tenant              |                                  |
+| `committee`           | FK → CommitteeIdentifier |                                  |
+| `meeting_date`        | DateField                |                                  |
+| `submission_deadline` | DateField                | Latest date for paper submission |
+| `academic_year`       | CharField                | e.g. `2028/29`                   |
+
+**Constraints:** `tenant` must agree with `committee.tenant`. Enforced in `clean()`
 
 ---
 
@@ -965,13 +985,13 @@ to meetings via `AgendaItem`.
 Links a document to a meeting agenda, regardless of document type.
 Demonstrates the cross-cutting query benefit of the envelope model.
 
-| Field      | Type                 | Notes                         |
-|------------|----------------------|-------------------------------|
-| `id`       | PK                   |                               |
-| `meeting`  | FK → Meeting         | `related_name='items'`        |
-| `document` | FK → Document        | `related_name='agenda_items'` |
-| `order`    | PositiveIntegerField |                               |
-| `notes`    | TextField            |                               |
+| Field      | Type                  | Notes                         |
+|------------|-----------------------|-------------------------------|
+| `id`       | PK                    |                               |
+| `meeting`  | FK → CommitteeMeeting | `related_name='agenda_items'` |
+| `document` | FK → Document         | `related_name='agenda_items'` |
+| `order`    | PositiveIntegerField  |                               |
+| `notes`    | TextField             |                               |
 
 **Constraints:** `unique_together = (meeting, document)`
 
@@ -1011,9 +1031,25 @@ DOCUMENT_DEPENDENCIES = {
             requires_type=DocumentType.MODULE_SPECIFICATION,
             requires_state=ModuleSpecState.APPROVED,
             resolution='all',
+            stale_limit=timedelta(days=365 * 3),  # routine update cycle
         ),
     ],
-    ...
+    DocumentType.REACCREDITATION: [
+        Dependency(
+            dependent_transition='submit_to_body',
+            requires_type=DocumentType.MODULE_SPECIFICATION,
+            requires_state=ModuleSpecState.APPROVED,
+            resolution='all',
+            stale_limit=timedelta(days=365 * 1),  # tighter for PSRB submission
+        ),
+        Dependency(
+            dependent_transition='submit_to_body',
+            requires_type=DocumentType.LEARNING_OUTCOME,
+            requires_state=LearningOutcomeState.APPROVED,
+            resolution='all',
+            stale_limit=None,  # never auto-initiate — convenor decides
+        ),
+    ],
 }
 ```
 

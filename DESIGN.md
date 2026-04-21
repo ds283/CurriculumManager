@@ -156,7 +156,7 @@ class ModuleSpecificationContent(models.Model):
         Document, on_delete=models.CASCADE,
         related_name='module_spec')
     credit_points = models.PositiveIntegerField()
-    level = models.CharField(max_length=10)  # FHEQ level
+    level = models.ForeignKey(FHEQLevel, on_delete=models.PROTECT)  # FHEQ level
     subject_area = models.CharField(max_length=100)
 ```
 
@@ -360,7 +360,7 @@ class ModuleSpecFSM:
         ModuleSpecState.DRAFT: {
             'submit': Transition(
                 target=ModuleSpecState.SUBMITTED,
-                permitted_roles={'author'},
+                permitted_roles={'convenor'},
                 side_effects=[create_review_task],
                 estimated_days=14,
             ),
@@ -368,7 +368,7 @@ class ModuleSpecFSM:
         ModuleSpecState.SUBMITTED: {
             'assign_review': Transition(
                 target=ModuleSpecState.FACULTY_REVIEW,
-                permitted_roles={'coordinator'},
+                permitted_roles={'department_tlc_chair'},
                 side_effects=[create_faculty_review_task],
                 estimated_days=7,
             ),
@@ -376,7 +376,7 @@ class ModuleSpecFSM:
         ModuleSpecState.FACULTY_REVIEW: {
             'approve': Transition(
                 target=ModuleSpecState.APPROVED,
-                permitted_roles={'reviewer'},
+                permitted_roles={'faculty_tlc_chair'},
                 side_effects=[publish_asset_version],
                 generates_milestone=True,
                 milestone_label='Module specification approved',
@@ -526,6 +526,23 @@ DOCUMENT_DEPENDENCIES = {
             requires_type=DocumentType.MODULE_SPECIFICATION,
             requires_state=ModuleSpecState.APPROVED,
             resolution='all',
+            stale_limit=timedelta(days=365 * 3),  # routine update cycle
+        ),
+    ],
+    DocumentType.REACCREDITATION: [
+        Dependency(
+            dependent_transition='submit_to_body',
+            requires_type=DocumentType.MODULE_SPECIFICATION,
+            requires_state=ModuleSpecState.APPROVED,
+            resolution='all',
+            stale_limit=timedelta(days=365 * 1),  # tighter for PSRB submission
+        ),
+        Dependency(
+            dependent_transition='submit_to_body',
+            requires_type=DocumentType.LEARNING_OUTCOME,
+            requires_state=LearningOutcomeState.APPROVED,
+            resolution='all',
+            stale_limit=None,  # never auto-initiate — convenor decides
         ),
     ],
 }
@@ -548,7 +565,7 @@ class PublicationTarget(models.Model):
     target_date = models.DateField()
     owner = models.ForeignKey(User, on_delete=models.PROTECT)
     programme = models.ForeignKey(
-        Document, null=True, blank=True,
+        ProgrammeIdentifier, null=True, blank=True,
         on_delete=models.PROTECT,
         related_name='publication_targets')
     is_active = models.BooleanField(default=True)
@@ -569,35 +586,116 @@ class ScheduledMilestone(models.Model):
     must_be_initiated_by = models.DateField()
     is_critical_path = models.BooleanField(default=False)
     at_risk = models.BooleanField(default=False)
-    link_status = models.CharField(max_length=20, default='unmatched')
-    # unmatched | candidate | linked | separate | deferred
-    link_decided_by = models.ForeignKey(
-        User, null=True, blank=True, on_delete=models.PROTECT)
-    link_decided_at = models.DateTimeField(null=True, blank=True)
-    link_rationale = models.TextField(blank=True)
     computed_at = models.DateTimeField(auto_now=True)
 
 
+class MilestonePublicationTarget(models.Model):
+    milestone = models.ForeignKey(
+        ScheduledMilestone, on_delete=models.CASCADE,
+        related_name="additional_targets")
+    publication_target = models.ForeignKey(
+        PublicationTarget, on_delete=models.CASCADE,
+        related_name="shared_milestones")
+    linked_by = models.ForeignKey(
+        User, on_delete=models.PROTECT)
+    linked_at = models.DateTimeField(auto_now_add=True)
+    rationale = models.TextField(blank=True)
+
+
 class MilestoneOverlap(models.Model):
+    class Character(models.TextChoices):
+        COMPATIBLE = 'compatible'
+        INCOMPATIBLE = 'incompatible'
+        DEADLINE_RISK = 'deadline_risk'
+
+    class Resolution(models.TextChoices):
+        PENDING = 'pending'
+        LINKED = 'linked'
+        MONITORING = 'monitoring'
+        SEPARATE = 'separate'
+        DISMISSED = 'dismissed'
+
     milestone_a = models.ForeignKey(
         ScheduledMilestone, on_delete=models.CASCADE,
         related_name='overlaps_as_a')
     milestone_b = models.ForeignKey(
-        ScheduledMilestone, on_delete=models.CASCADE,
+        ScheduledMilestone, null=True, blank=True,
+        on_delete=models.PROTECT,
         related_name='overlaps_as_b')
-    character = models.CharField(max_length=20)
-    # compatible | incompatible | deadline_risk
+    workflow_instance = models.ForeignKey(
+        WorkflowInstance, null=True, blank=True,
+        on_delete=models.PROTECT,
+        related_name='milestone_overlaps')
+    character = models.CharField(max_length=20, choices=Character.choices)
     explanation = models.TextField()
     decision_required_by = models.DateField(null=True, blank=True)
+    resolution = models.CharField(
+        max_length=20, choices=Resolution.choices,
+        default=Resolution.PENDING)
+    resolved_milestone = models.ForeignKey(
+        ScheduledMilestone, null=True, blank=True,
+        on_delete=models.PROTECT,
+        related_name='resolved_from_overlaps')
+    resolved_by = models.ForeignKey(
+        User, null=True, blank=True,
+        on_delete=models.PROTECT)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_rationale = models.TextField(blank=True)
     computed_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [('milestone_a', 'milestone_b')]
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                        Q(milestone_b__isnull=False, workflow_instance__isnull=True) |
+                        Q(milestone_b__isnull=True, workflow_instance__isnull=False)
+                ),
+                name='milestone_overlap_exactly_one_counterpart',
+            ),
+            models.CheckConstraint(
+                check=(
+                        Q(resolution__in=['pending', 'monitoring', 'separate', 'dismissed'],
+                          resolved_milestone__isnull=True) |
+                        Q(resolution='linked',
+                          resolved_milestone__isnull=False)
+                ),
+                name='milestone_overlap_resolved_milestone_only_when_linked',
+            ),
+            models.UniqueConstraint(
+                fields=['milestone_a', 'milestone_b'],
+                condition=Q(milestone_b__isnull=False),
+                name='unique_milestone_overlap_pair',
+            ),
+            models.UniqueConstraint(
+                fields=['milestone_a', 'workflow_instance'],
+                condition=Q(workflow_instance__isnull=False),
+                name='unique_milestone_workflow_overlap',
+            ),
+        ]
+
+    def clean(self):
+        has_b = self.milestone_b_id is not None
+        has_workflow = self.workflow_instance_id is not None
+
+        if has_b == has_workflow:
+            raise ValidationError(
+                'Exactly one of milestone_b or workflow_instance must be set.'
+            )
+
+        if self.resolution == self.Resolution.LINKED and not self.resolved_milestone_id:
+            raise ValidationError(
+                'resolved_milestone must be set when resolution is linked.'
+            )
+
+        if self.resolution != self.Resolution.LINKED and self.resolved_milestone_id:
+            raise ValidationError(
+                'resolved_milestone must be null unless resolution is linked.'
+            )
 
 
 class CommitteeMeeting(models.Model):
     committee = models.ForeignKey(
-        'Committee', on_delete=models.PROTECT)
+        'CommitteeIdentifier', on_delete=models.PROTECT)
     meeting_date = models.DateField()
     submission_deadline = models.DateField()
     academic_year = models.CharField(max_length=9)  # e.g. '2028/29'
@@ -609,7 +707,7 @@ class TransitionDuration(models.Model):
     duration_type = models.CharField(max_length=20)  # days | committee
     estimated_days = models.PositiveIntegerField(null=True, blank=True)
     committee = models.ForeignKey(
-        'Committee', null=True, blank=True,
+        'CommitteeIdentifier', null=True, blank=True,
         on_delete=models.PROTECT)
 ```
 
