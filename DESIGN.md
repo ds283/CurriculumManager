@@ -15,20 +15,20 @@ compatibility but do not generate implementation code for those sections.
 
 ## 1. Technology stack
 
-| Component      | Choice                           | Notes                                                 |
-|----------------|----------------------------------|-------------------------------------------------------|
-| Language       | Python 3.12+                     |                                                       |
-| Framework      | Django 5.x                       | Not Flask. Use integrated migrations, admin, ORM.     |
-| Database       | PostgreSQL 16+                   | jsonb, recursive CTEs, transactional DDL required.    |
-| Task queue     | Celery 5.x                       | Redis broker. Named queues — see §6.                  |
-| Cache / broker | Redis                            |                                                       |
-| Auth           | Okta SSO                         | django-allauth with Okta provider. Custom middleware. |
-| Frontend       | HTMX + Bootstrap 5               | No React SPA. Django templates throughout.            |
-| WSGI           | Waitress (dev) / Gunicorn (prod) | Set per environment in settings split.                |
+| Component      | Choice             | Notes                                                 |
+|----------------|--------------------|-------------------------------------------------------|
+| Language       | Python 3.12+       |                                                       |
+| Framework      | Django 5.x         | Not Flask. Use integrated migrations, admin, ORM.     |
+| Database       | PostgreSQL 16+     | jsonb, recursive CTEs, transactional DDL required.    |
+| Task queue     | Celery 5.x         | Redis broker. Named queues — see §6.                  |
+| Cache / broker | Redis              |                                                       |
+| Auth           | Okta SSO           | django-allauth with Okta provider. Custom middleware. |
+| Frontend       | HTMX + Bootstrap 5 | No React SPA. Django templates throughout.            |
+| WSGI           | Waitress           |                                                       |
 
 Key packages: `networkx` (graph algorithms), `pydantic` (JSON schema
 validation), `ollama` Python SDK (deferred), `django-guardian`
-(object-level permissions — install but do not configure until §5 is
+(object-level permissions — install but do not configure until §6 is
 in place).
 
 Do **not** use `django-fsm` or `django-simple-history`. Both are
