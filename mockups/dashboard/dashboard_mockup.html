@@ -208,7 +208,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
     <div class="spacer"></div>
     <div class="view-tabs">
       <button class="vt on" onclick="switchView('faculty')">Faculty member view</button>
-      <button class="vt" onclick="switchView('coord')">Programme coordinator view</button>
+      <button class="vt" onclick="switchView('coord')">Course coordinator view</button>
     </div>
     <div class="spacer"></div>
     <div id="user-faculty" style="display:flex;align-items:center;gap:8px;">
@@ -219,7 +219,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
     <div id="user-coord" style="display:none;align-items:center;gap:8px;">
       <div class="avatar av-teal">MC</div>
       <span class="uname">Michael Chen</span>
-      <span class="role-badge rb-teal">Programme coordinator</span>
+      <span class="role-badge rb-teal">Course coordinator</span>
     </div>
   </div>
 
@@ -245,7 +245,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
     <!-- ══ COORDINATOR SIDEBAR ══ -->
     <div class="sidebar" id="sb-coord" style="display:none;">
       <div class="ni on-teal"><div class="dot" style="background:var(--tealD)"></div>Dashboard</div>
-      <div class="ns">Programmes</div>
+      <div class="ns">Courses</div>
       <div class="ni"><div class="dot"></div>BEng Mechanical Eng<span class="badge b-amber">3</span></div>
       <div class="ni"><div class="dot"></div>MEng Mechanical Eng</div>
       <div class="ni"><div class="dot"></div>BEng Aerospace Eng<span class="badge b-red">1</span></div>
@@ -424,12 +424,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
     <div class="content view" id="view-coord">
 
       <div class="ph">
-        <div class="ph-title">Programme coordinator dashboard</div>
-        <div class="ph-sub">Michael Chen · Academic year 2025/26 · 3 programmes · 7 items awaiting review</div>
+        <div class="ph-title">Course coordinator dashboard</div>
+        <div class="ph-sub">Michael Chen · Academic year 2025/26 · 3 courses · 7 items awaiting review</div>
       </div>
 
       <div class="metrics">
-        <div class="mc"><div class="mc-label">Programmes managed</div><div class="mc-val">3</div><div class="mc-sub">2 BEng · 1 MEng</div></div>
+        <div class="mc"><div class="mc-label">Courses managed</div><div class="mc-val">3</div><div class="mc-sub">2 BEng · 1 MEng</div></div>
         <div class="mc"><div class="mc-label">Modules in scope</div><div class="mc-val">47</div><div class="mc-sub">44 published · 3 in flux</div></div>
         <div class="mc"><div class="mc-label">Pending approval</div><div class="mc-val" style="color:var(--red)">7</div><div class="mc-sub">Awaiting your review</div></div>
         <div class="mc"><div class="mc-label">Next committee</div><div class="mc-val" style="font-size:14px;line-height:1.4">30 Jan</div><div class="mc-sub">4 items on agenda</div></div>
@@ -477,7 +477,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
       </div>
 
       <div class="two">
-        <!-- Programme cards -->
+        <!-- Course cards -->
         <div>
           <div class="prog-card">
             <div class="prog-head">
@@ -493,7 +493,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
               <div class="prog-pills">
                 <span class="pill p-amber">1 spec in review</span>
                 <span class="pill p-red">2 specs overdue review</span>
-                <span class="pill p-blue">Programme spec: v3</span>
+                <span class="pill p-blue">Course spec: v3</span>
               </div>
             </div>
           </div>
@@ -551,7 +551,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
                 <div class="flag f-amber">
                   <span class="flag-icon">⚠</span>
                   <div>
-                    <div class="flag-title">BEng Mechanical: programme spec requires refresh</div>
+                    <div class="flag-title">BEng Mechanical: course spec requires refresh</div>
                     <div class="flag-sub">Linked modules updated since v3 publication. Coordinator action recommended.</div>
                   </div>
                 </div>

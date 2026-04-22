@@ -185,7 +185,7 @@ anchored to that module. The LLM regulatory pre-check uses the module-level
 
 ---
 
-### `ProgrammeSpecificationContent`
+### `CourseSpecificationContent`
 
 No fields specified yet beyond the structural anchor. Stub pending
 specification work with the curriculum team.
@@ -193,7 +193,7 @@ specification work with the curriculum team.
 | Field      | Type                     | Notes                           |
 |------------|--------------------------|---------------------------------|
 | `id`       | PK                       |                                 |
-| `document` | OneToOneField → Document | `related_name='programme_spec'` |
+| `document` | OneToOneField → Document | `related_name='course_spec'` |
 
 ---
 
@@ -220,7 +220,7 @@ specification work with the curriculum team.
 
 **Note on pass mark:** not held per assessment. Pass mark is derived from
 `FHEQLevel` via institutional policy. To be captured as a policy lookup
-model when programme regulations are in scope.
+model when course regulations are in scope.
 
 **Note on `submission_day`:** a Friday value will be flagged by the
 assessment congestion analysis once that is implemented.

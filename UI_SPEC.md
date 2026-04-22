@@ -60,7 +60,7 @@ throughout — never use raw hex values in templates or component CSS.
 | Amber    | `--amber` `#854F0B`  | `--amberL` `#FAEEDA`  | `--amberM` `#FAC775`  | In review / warning / due soon       |
 | Red      | `--red` `#A32D2D`    | `--redL` `#FCEBEB`    | —                     | Blocked / urgent / overdue           |
 | Purple   | `--purple` `#5B21B6` | `--purpleL` `#EDE9FE` | `--purpleM` `#A78BFA` | AI-generated content exclusively     |
-| Teal     | `--tealD` `#0F6E56`  | `--tealL` `#E1F5EE`   | —                     | Programme coordinator role accents   |
+| Teal     | `--tealD` `#0F6E56`  | `--tealL` `#E1F5EE`   | —                     | Course coordinator role accents   |
 
 **Rule:** Purple is reserved exclusively for AI-related UI elements. Do not use it for any other purpose.
 
@@ -189,7 +189,7 @@ Width: 196px. Structure:
 **Role accent colours for active nav items:**
 
 - Convenor / faculty member: `--blue`
-- Programme coordinator: `--tealD`
+- Course coordinator: `--tealD`
 - Committee / TLC chair: `--purple`
 
 ### 3.3 Three-column layout (document edit view)
@@ -435,7 +435,7 @@ reviewer scrutiny.
 
 ### 5.11 Progress bar
 
-Used on programme cards in the coordinator dashboard.
+Used on course cards in the coordinator dashboard.
 
 ```html
 {% include "components/progress_bar.html" with label="Module spec currency" value=22 total=24 colour="green" %}
@@ -604,7 +604,7 @@ exactly.
 | No in-flight workflow (neutral)   | Gray   |
 | AI-generated content, any type    | Purple |
 | Primary action / navigation       | Blue   |
-| Programme coordinator role        | Teal   |
+| Course coordinator role        | Teal   |
 | Committee / TLC chair role        | Purple |
 
 ---
@@ -620,5 +620,5 @@ exactly.
   flex for layout.
 - Do not add JavaScript for anything HTMX can handle.
 - Do not apply the purple AI colour to non-AI UI elements under any circumstances.
-- Do not use `--tealD` / teal accents for any role other than programme coordinator.
+- Do not use `--tealD` / teal accents for any role other than course coordinator.
 - Do not omit the AI disclaimer footer from any view that surfaces LLM output.

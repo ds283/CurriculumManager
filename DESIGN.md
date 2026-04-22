@@ -106,7 +106,7 @@ Type-specific content lives in a separate table with a
 class Document(models.Model):
     class DocumentType(models.TextChoices):
         MODULE_SPECIFICATION = 'module_spec', 'Module Specification'
-        PROGRAMME_SPECIFICATION = 'programme_spec', 'Programme Specification'
+        PROGRAMME_SPECIFICATION = 'course_spec', 'Course Specification'
         ASSESSMENT = 'assessment', 'Assessment'
         LEARNING_OUTCOME = 'learning_outcome', 'Learning Outcome'
         TEACHING_ACTIVITY = 'teaching_activity', 'Teaching Activity'
@@ -310,10 +310,10 @@ AssetVersion.objects.get(
 
 ### 4.1 Purpose
 
-`ModuleIdentifier` and `ProgrammeIdentifier` carry denormalised fields
+`ModuleIdentifier` and `CourseIdentifier` carry denormalised fields
 summarising the most recent publication event across all governed objects
 anchored to them. These fields support at-a-glance summary pages and module
-and programme list views without requiring a union query across multiple
+and course list views without requiring a union query across multiple
 document types at read time.
 
 | Field                          | Type                     | Notes                                              |
@@ -323,18 +323,18 @@ document types at read time.
 | `last_published_document_type` | CharField (nullable)     | `Document.DocumentType` value of that object       |
 | `has_in_flight_workflow`       | BooleanField             | True if any anchored document has an open workflow |
 
-On `ProgrammeIdentifier`, two variants of the timestamp are maintained:
+On `CourseIdentifier`, two variants of the timestamp are maintained:
 
-| Field                              | Type                     | Notes                                                    |
-|------------------------------------|--------------------------|----------------------------------------------------------|
-| `last_published_at`                | DateTimeField (nullable) | Any publication in the programme's scope (including      |
-|                                    |                          | module-level events for modules belonging to this        |
-|                                    |                          | programme)                                               |
-| `programme_spec_last_published_at` | DateTimeField (nullable) | Set only when `ProgrammeSpecificationContent` publishes. |
-|                                    |                          | Never updated by module-level events.                    |
+| Field                           | Type                     | Notes                                                 |
+|---------------------------------|--------------------------|-------------------------------------------------------|
+| `last_published_at`             | DateTimeField (nullable) | Any publication in the course's scope (including      |
+|                                 |                          | module-level events for modules belonging to this     |
+|                                 |                          | course)                                               |
+| `course_spec_last_published_at` | DateTimeField (nullable) | Set only when `CourseSpecificationContent` publishes. |
+|                                 |                          | Never updated by module-level events.                 |
 
-This distinction allows a programme coordinator to see both "anything
-changed" and "the programme specification itself changed" without
+This distinction allows a course coordinator to see both "anything
+changed" and "the course specification itself changed" without
 conflating the two.
 
 ### 4.2 Update protocol
@@ -355,7 +355,7 @@ def on_document_published(document):
     """
     Called by the FSM publication transition for every document type.
     Updates denormalised aggregation fields on ModuleIdentifier and,
-    where applicable, ProgrammeIdentifier.
+    where applicable, CourseIdentifier.
     """
     module = resolve_module_identifier(document)  # returns None if not applicable
 
@@ -371,16 +371,16 @@ def on_document_published(document):
                 'last_published_document_type',
             ])
 
-        # Propagate to all programmes that include this module.
+        # Propagate to all courses that include this module.
         with transaction.atomic():
-            programme_ids = ProgrammeModuleMembership.objects.filter(
+            course_ids = CourseModuleMembership.objects.filter(
                 module=module
-            ).values_list('programme_id', flat=True)
+            ).values_list('course_id', flat=True)
 
-            # Lock all affected programme rows simultaneously.
+            # Lock all affected course rows simultaneously.
             # Rows are locked in pk order by the database to avoid deadlocks.
-            ProgrammeIdentifier.objects.select_for_update().filter(
-                pk__in=programme_ids
+            CourseIdentifier.objects.select_for_update().filter(
+                pk__in=course_ids
             ).update(
                 last_published_at=now(),
                 last_published_document_type=document.document_type,
@@ -390,10 +390,10 @@ def on_document_published(document):
 `resolve_module_identifier` is a registry function in
 `documents/registry.py` that maps each `DocumentType` to the FK path
 that reaches its `ModuleIdentifier`, if one exists. Document types with
-no module anchor (e.g. `ProgrammeSpecificationContent`) return `None`
+no module anchor (e.g. `CourseSpecificationContent`) return `None`
 from this function and are excluded from module-level propagation.
-`ProgrammeSpecificationContent` instead updates
-`programme_spec_last_published_at` directly in its own FSM publication
+`CourseSpecificationContent` instead updates
+`course_spec_last_published_at` directly in its own FSM publication
 transition side effect.
 
 ### 4.3 Concurrency discipline
@@ -408,11 +408,11 @@ Rules that must be followed at every call site:
 - `select_for_update()` must always be called inside `transaction.atomic()`.
   Calling it outside a transaction has no effect and will raise
   `TransactionManagementError` in development.
-- When locking multiple rows (the programme propagation case), always
+- When locking multiple rows (the course propagation case), always
   use a bulk `.filter().update()` rather than locking and saving rows
   individually in a loop. The database acquires locks in a consistent
   internal order, avoiding deadlock.
-- Never acquire a lock on `ModuleIdentifier` and `ProgrammeIdentifier`
+- Never acquire a lock on `ModuleIdentifier` and `CourseIdentifier`
   in the same `atomic()` block. Use separate blocks as shown above.
   This eliminates the cross-table deadlock risk.
 - The FSM publication transition is already wrapped in `atomic()` for
@@ -421,7 +421,7 @@ Rules that must be followed at every call site:
 
 ### 4.4 `has_in_flight_workflow` — separate hook pair
 
-`has_in_flight_workflow` on `ModuleIdentifier` and `ProgrammeIdentifier`
+`has_in_flight_workflow` on `ModuleIdentifier` and `CourseIdentifier`
 is maintained by a dedicated pair of hooks, distinct from
 `on_document_published`:
 
@@ -432,7 +432,7 @@ def on_workflow_opened(document):
     """
     Called by the FSM when a WorkflowInstance is first created for
     any governed document. Sets has_in_flight_workflow = True on the
-    anchored ModuleIdentifier and affected ProgrammeIdentifiers.
+    anchored ModuleIdentifier and affected CourseIdentifiers.
     """
     module = resolve_module_identifier(document)
     if module:
@@ -442,12 +442,12 @@ def on_workflow_opened(document):
             ).update(has_in_flight_workflow=True)
 
         with transaction.atomic():
-            programme_ids = ProgrammeModuleMembership.objects.filter(
+            course_ids = CourseModuleMembership.objects.filter(
                 module=module
-            ).values_list('programme_id', flat=True)
+            ).values_list('course_id', flat=True)
 
-            ProgrammeIdentifier.objects.select_for_update().filter(
-                pk__in=programme_ids
+            CourseIdentifier.objects.select_for_update().filter(
+                pk__in=course_ids
             ).update(has_in_flight_workflow=True)
 
 
@@ -476,25 +476,25 @@ def on_workflow_closed(document):
 
         if not has_open:
             with transaction.atomic():
-                programme_ids = ProgrammeModuleMembership.objects.filter(
+                course_ids = CourseModuleMembership.objects.filter(
                     module=module
-                ).values_list('programme_id', flat=True)
+                ).values_list('course_id', flat=True)
 
-                # Only recompute programme-level flag if the module
-                # flag cleared. If other modules on the programme still
-                # have open workflows the programme flag stays True —
-                # recompute per programme only when needed.
-                for programme_id in programme_ids:
+                # Only recompute course-level flag if the module
+                # flag cleared. If other modules on the course still
+                # have open workflows the course flag stays True —
+                # recompute per course only when needed.
+                for course_id in course_ids:
                     prog_has_open = Document.objects.filter(
-                        module_identifier__programme_memberships__programme_id=programme_id,
+                        module_identifier__course_memberships__course_id=course_id,
                     ).exclude(
                         current_workflow__isnull=True,
                     ).filter(
                         current_workflow__state__in=NON_TERMINAL_STATES,
                     ).exists()
 
-                    ProgrammeIdentifier.objects.select_for_update().filter(
-                        pk=programme_id
+                    CourseIdentifier.objects.select_for_update().filter(
+                        pk=course_id
                     ).update(has_in_flight_workflow=prog_has_open)
 ```
 
@@ -506,10 +506,10 @@ in rapid succession, or when one of several concurrent open workflows
 closes. The recomputation ensures the field always reflects the true
 current state regardless of concurrency.
 
-**Programme-level recomputation is conditional**
+**Course-level recomputation is conditional**
 
-The programme flag recomputation only runs when the module flag clears.
-If the module still has open workflows, the programme necessarily has
+The course flag recomputation only runs when the module flag clears.
+If the module still has open workflows, the course necessarily has
 at least one open workflow via that module — no recomputation needed.
 This avoids an unnecessary cross-module query on the common case where
 a module has several workflows closing in sequence.
@@ -664,14 +664,14 @@ upward imports.
 | `core`       | `Tenant`, `TenantScopedManager`, `TenantMiddleware`,             |
 |              | `TenantMembershipMiddleware`, `ContextVar`, base views           |
 | `accounts`   | `TenantMembership`, Okta SSO via `mozilla-django-oidc`,          |
-|              | role resolution, `ProgrammeConvenorScope`, `ModuleConvenorScope` |
+|              | role resolution, `CourseConvenorScope`, `ModuleConvenorScope`    |
 | `registry`   | Stable, administrative, non-governed reference models.           |
 |              | No workflows, no versioning, no FSM. Deactivated rather than     |
 |              | deleted. Includes: `FacultyIdentifier`, `SchoolIdentifier`,      |
-|              | `DepartmentIdentifier`, `ProgrammeIdentifier`,                   |
+|              | `DepartmentIdentifier`, `CourseIdentifier`,                      |
 |              | `ModuleIdentifier`, `AssessmentSlotIdentifier`,                  |
 |              | `FHEQLevel`, `CommitteeIdentifier`, `AccreditingBodyIdentifier`, |
-|              | `ProgrammeAccreditationScope`, `RegulatoryDocument`,             |
+|              | `CourseAccreditationScope`, `RegulatoryDocument`,                |
 |              | `PeriodIdentifier`, `PeriodWeekIdentifier`                       |
 | `documents`  | `Document` envelope, all `[Type]Content` content models,         |
 |              | `documents/registry.py` (type → content model + relation name    |
@@ -744,10 +744,10 @@ rather than tenant-scoped — but the pattern is the baseline.
 `accounts` owns `TenantMembership` (the global role grant) and the two
 scoping models that express ongoing institutional responsibility:
 
-- `ProgrammeConvenorScope` — scopes a person to a programme with a
+- `CourseConvenorScope` — scopes a person to a course with a
   `valid_from` / `valid_to` validity window. Uses a partial
   `UniqueConstraint` to enforce at most one active record per
-  `(programme, user, role)` combination.
+  `(course, user, role)` combination.
 - `ModuleConvenorScope` — same pattern for modules.
 
 These are append-only records: convenorships are ended by setting
@@ -755,8 +755,8 @@ These are append-only records: convenorships are ended by setting
 hold at least the `author` role in `TenantMembership` so that they
 can initiate workflows in their own right.
 
-`ProgrammeAccreditationScope` (scoping an `AccreditingBodyIdentifier` to a
-programme with a validity window) follows the same structural pattern
+`CourseAccreditationScope` (scoping an `AccreditingBodyIdentifier` to a
+course with a validity window) follows the same structural pattern
 and also lives in `accounts` as part of the scoping layer.
 
 ---
@@ -879,8 +879,8 @@ class PublicationTarget(models.Model):
     target_state = models.CharField(max_length=100)
     target_date = models.DateField()
     owner = models.ForeignKey(User, on_delete=models.PROTECT)
-    programme = models.ForeignKey(
-        ProgrammeIdentifier, null=True, blank=True,
+    course = models.ForeignKey(
+        CourseIdentifier, null=True, blank=True,
         on_delete=models.PROTECT,
         related_name='publication_targets')
     is_active = models.BooleanField(default=True)
@@ -1109,7 +1109,7 @@ follows the LLM output.
 | Task type              | Trigger                                  |
 |------------------------|------------------------------------------|
 | `committee_screening`  | Submission deadline passes for a meeting |
-| `impact_analysis`      | Programme-level change initiated         |
+| `impact_analysis`      | Course-level change initiated            |
 | `form_draft`           | Initiation task created for a convenor   |
 | `pre_submission_check` | Document submitted for review            |
 | `regulatory_check`     | Document reaches review state            |
@@ -1156,7 +1156,7 @@ Absence of an LLM result never blocks a workflow transition.
 6. **Register the publication hook** — ensure the FSM publication
    transition calls `on_document_published(document)`. If this step
    is omitted, `ModuleIdentifier.last_published_at` and
-   `ProgrammeIdentifier.last_published_at` will not reflect changes
+   `CourseIdentifier.last_published_at` will not reflect changes
    made via this document type. This is a silent correctness failure,
    not a runtime error.
 7. **Register the workflow lifecycle hooks** — if the document type
@@ -1165,7 +1165,7 @@ Absence of an LLM result never blocks a workflow transition.
    created, and `on_workflow_closed(document)` when any
    `WorkflowInstance` reaches a terminal state. If either hook is
    omitted, `ModuleIdentifier.has_in_flight_workflow` and
-   `ProgrammeIdentifier.has_in_flight_workflow` will be incorrect.
+   `CourseIdentifier.has_in_flight_workflow` will be incorrect.
    This is a silent correctness failure, not a runtime error. Add a
    test that opening and closing a workflow on a document of this type
    correctly sets and clears `has_in_flight_workflow` on the associated

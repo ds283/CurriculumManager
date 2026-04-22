@@ -37,7 +37,7 @@ multiple roles within a single tenant (e.g. it's possible to have
 | `id`        | PK           |                                                                                                                                                                                                                                                                                                                                       |
 | `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                                    |
 | `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                                       |
-| `role`      | CharField    | `TextChoices`: `convenor`, `reviewer`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `programme_coordinator` |
+| `role`      | CharField    | `TextChoices`: `convenor`, `reviewer`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `course_coordinator` |
 | `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                                       |
 
 **Constraints:** `unique_together = (user, role, tenant)`
@@ -93,7 +93,7 @@ own committees that approve certain types of document.
 
 ### `DepartmentIdentifier`
 
-Organizational unit. Owns programmes and modules. May have its own committees that
+Organizational unit. Owns courses and modules. May have its own committees that
 approve certain types of document.
 
 | Field     | Type                             | Notes                                                                                     |
@@ -232,7 +232,7 @@ level descriptors, Subject Benchmark Statements, PSRB requirements, and
 OfS conditions. Versioned — when a document is revised, a new record is
 created and the previous record's `effective_to` is set in the same
 transaction. Tenant-scoped documents (e.g. PSRB requirements specific
-to a programme) carry a non-null `tenant` FK; global documents (e.g.
+to a course) carry a non-null `tenant` FK; global documents (e.g.
 FHEQ descriptors, Subject Benchmark Statements) have `tenant` null.
 
 | Field            | Type                      | Notes                                                                       |
@@ -282,7 +282,7 @@ RegulatoryDocument.objects.filter(
 
 ---
 
-### `ProgrammeIdentifier`
+### `CourseIdentifier`
 
 | Field                              | Type                      | Notes                                                                                                                                                                                                                               |
 |------------------------------------|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -290,13 +290,13 @@ RegulatoryDocument.objects.filter(
 | `tenant`                           | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()`                                                                                                                                                                              |
 | `department`                       | FK → DepartmentIdentifier |                                                                                                                                                                                                                                     | 
 | `code`                             | CharField                 | unique code, matches institutional code, e.g. F3058U                                                                                                                                                                                |
-| `name`                             | CharField                 | programme name                                                                                                                                                                                                                      |
+| `name`                             | CharField                 | course name                                                                                                                                                                                                                      |
 | `type`                             | CharField                 | `TextChoices`:'UG', 'PGT', 'PGR'                                                                                                                                                                                                    |
 | `moa`                              | CharField                 | `TextChoices`: 'FT', 'PT', 'Mixed'                                                                                                                                                                                                  |
-| `last_published_at`                | DateTimeField (nullable)  | Most recent publication of any governed document in this programme's scope, including module-level events for modules belonging to this programme                                                                                   |
+| `last_published_at`                | DateTimeField (nullable)  | Most recent publication of any governed document in this course's scope, including module-level events for modules belonging to this course                                                                                   |
 | `last_published_document_type`     | CharField (nullable)      | `Document.DocumentType` value of that event                                                                                                                                                                                         |
 | `has_in_flight_workflow`           | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below.       |
-| `programme_spec_last_published_at` | DateTimeField (nullable)  | Set only when `ProgrammeSpecificationContent` publishes. Never updated by module-level events. Allows programme coordinators to distinguish "something in the programme changed" from "the programme specification itself changed." |
+| `course_spec_last_published_at` | DateTimeField (nullable)  | Set only when `CourseSpecificationContent` publishes. Never updated by module-level events. Allows course coordinators to distinguish "something in the course changed" from "the course specification itself changed." |
 
 **Constraints:** `unique_together = (code, tenant)`
 
@@ -367,28 +367,28 @@ concurrency rules.
   (`on_document_published` in `workflows/hooks.py`) and must never be written directly outside that hook. See §4 for
   the full update protocol and concurrency discipline.
 - `has_in_flight_workflow` is maintained by `on_workflow_opened` and `on_workflow_closed`. See the identical
-  implementation note on ProgrammeIdentifier for full details, including the recomputation query and concurrency
+  implementation note on CourseIdentifier for full details, including the recomputation query and concurrency
   discipline.
 
 ---
 
-### `ProgrammeModuleMembership`
+### `CourseModuleMembership`
 
-Join table expressing the many-to-many relationship between programmes
-and modules. A module may belong to multiple programmes; a programme
+Join table expressing the many-to-many relationship between courses
+and modules. A module may belong to multiple courses; a course
 contains multiple modules. This table is the anchor for discovery
-queries ("all modules on this programme") and for programme-level
+queries ("all modules on this course") and for course-level
 denormalised field propagation (`last_published_at` on
-`ProgrammeIdentifier`).
+`CourseIdentifier`).
 
 | Field       | Type                     | Notes                                                                          |
 |-------------|--------------------------|--------------------------------------------------------------------------------|
 | `id`        | PK                       |                                                                                |
-| `tenant`    | FK → Tenant              | Must equal both `programme.tenant` and `module.tenant` — enforced in `clean()` |
-| `programme` | FK → ProgrammeIdentifier | `related_name='module_memberships'`                                            |
-| `module`    | FK → ModuleIdentifier    | `related_name='programme_memberships'`                                         |
+| `tenant`    | FK → Tenant              | Must equal both `course.tenant` and `module.tenant` — enforced in `clean()` |
+| `course` | FK → CourseIdentifier | `related_name='module_memberships'`                                            |
+| `module`    | FK → ModuleIdentifier    | `related_name='course_memberships'`                                         |
 
-**Constraints:** `unique_together = (programme, module)`
+**Constraints:** `unique_together = (course, module)`
 
 **Managers:** `objects = TenantScopedManager()`,
 `all_tenants = TenantScopedManager(require_tenant=False)`
@@ -396,13 +396,13 @@ denormalised field propagation (`last_published_at` on
 **Query patterns:**
 
 ```python
-# All modules on a programme
+# All modules on a course
 ModuleIdentifier.objects.filter(
-    programme_memberships__programme=programme
+    course_memberships__course=course
 )
 
-# All programmes a module belongs to
-ProgrammeIdentifier.objects.filter(
+# All courses a module belongs to
+CourseIdentifier.objects.filter(
     module_memberships__module=module
 )
 ```
@@ -487,8 +487,8 @@ department, or tenant level — exactly one of `faculty`, `school`, or
 ### `AccreditingBodyIdentifier`
 
 A professional or statutory accrediting body. Global — not
-tenant-scoped. Programme-level accreditation is expressed via
-`ProgrammeAccreditationScope`.
+tenant-scoped. Course-level accreditation is expressed via
+`CourseAccreditationScope`.
 
 | Field          | Type                | Notes                       |
 |----------------|---------------------|-----------------------------|
@@ -501,13 +501,13 @@ tenant-scoped. Programme-level accreditation is expressed via
 
 ## Scoping layer
 
-### `ProgrammeConvenorScope`
+### `CourseConvenorScope`
 
 | Field        | Type                     | Notes                   |
 |--------------|--------------------------|-------------------------|
 | `id`         | PK                       |                         |
 | `tenant`     | FK → Tenant              |
-| `programme`  | FK → ProgrammeIdentifier |                         |
+| `course`  | FK → CourseIdentifier |                         |
 | `user`       | FK → User                |                         |
 | `valid_from` | DateField                |                         |
 | `valid_to`   | DateField (nullable)     | NULL = currently active |
@@ -516,19 +516,19 @@ tenant-scoped. Programme-level accreditation is expressed via
 
 ```python
 UniqueConstraint(
-    fields=['programme', 'user'],
+    fields=['course', 'user'],
     condition=Q(valid_to__isnull=True),
-    name='unique_active_programme_convenor',
+    name='unique_active_course_convenor',
 )
 ```
 
 **Managers:** `objects = TenantScopedManager()`,
 `all_tenants = TenantScopedManager(require_tenant=False)`
 
-**Integrity note:** `tenant` must equal `programme.tenant` – enforced in `clean()`.
+**Integrity note:** `tenant` must equal `course.tenant` – enforced in `clean()`.
 
-**Implementation note:** `ProgrammeConvenorScope` records should not be created directly. Use
-`ProgrammeConvenorScope.create_for_user(programme, user, valid_from)`, which atomically creates the scope record and
+**Implementation note:** `CourseConvenorScope` records should not be created directly. Use
+`CourseConvenorScope.create_for_user(course, user, valid_from)`, which atomically creates the scope record and
 ensures the user has a convenor `TenantMembership` for the tenant, creating one if absent. The `clean()` method
 validates that the membership exists but cannot enforce the atomic creation.
 
@@ -567,9 +567,9 @@ validates that the membership exists but cannot enforce the atomic creation.
 
 ---
 
-### `ProgrammeAccreditationScope`
+### `CourseAccreditationScope`
 
-Records the accreditation of a programme by an accrediting body for a
+Records the accreditation of a course by an accrediting body for a
 defined period. Append-only — accreditation is closed by setting
 `valid_to` rather than deleting the record. PSRB-specific
 `RegulatoryDocument` records applicable to this accreditation are
@@ -578,8 +578,8 @@ linked via the M2M.
 | Field                  | Type                           | Notes                                                 |
 |------------------------|--------------------------------|-------------------------------------------------------|
 | `id`                   | PK                             |                                                       |
-| `tenant`               | FK → Tenant                    | Must equal `programme.tenant` — enforced in `clean()` |
-| `programme`            | FK → ProgrammeIdentifier       |                                                       |
+| `tenant`               | FK → Tenant                    | Must equal `course.tenant` — enforced in `clean()` |
+| `course`            | FK → CourseIdentifier       |                                                       |
 | `accrediting_body`     | FK → AccreditingBodyIdentifier |                                                       |
 | `valid_from`           | DateField                      |                                                       |
 | `valid_to`             | DateField (nullable)           | NULL = currently accredited                           |
@@ -602,7 +602,7 @@ UniqueConstraint(
 **Current accreditations query:**
 
 ```python
-ProgrammeAccreditationScope.objects.for_tenant(tenant).filter(
+CourseAccreditationScope.objects.for_tenant(tenant).filter(
     programme=programme,
     valid_to__isnull=True,
 )
@@ -646,7 +646,7 @@ separate table linked by `OneToOneField`.
 | Value               | Content model                   | Notes                                                               |
 |---------------------|---------------------------------|---------------------------------------------------------------------|
 | `module_spec`       | `ModuleSpecificationContent`    |                                                                     |
-| `programme_spec`    | `ProgrammeSpecificationContent` |                                                                     |
+| `programme_spec`    | `CourseSpecificationContent` |                                                                     |
 | `assessment`        | `AssessmentContent`             | Covers all assessment formats (exam, coursework, problem set, etc.) |
 | `learning_outcome`  | `LearningOutcomeContent`        |                                                                     |
 | `teaching_activity` | `TeachingActivityContent`       | Multiple may be approved simultaneously per module                  |
@@ -830,7 +830,7 @@ scheduler. All scheduled milestones are grouped under this entity.
 | `target_state`         | CharField                           | The required terminal state                                                                                        |
 | `target_date`          | DateField                           |                                                                                                                    |
 | `owner`                | FK → User                           | Usually the programme coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
-| `programme`            | FK → ProgrammeIdentifier (nullable) | If set, this target belongs to the specified programme. Unanchored targets are allowed.                            |
+| `programme`            | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified programme. Unanchored targets are allowed.                            |
 | `is_active`            | BooleanField                        |                                                                                                                    |
 | `created_at`           | DateTimeField                       | auto                                                                                                               |
 

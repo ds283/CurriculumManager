@@ -58,7 +58,7 @@ The prompt instructs the model to read all submissions and identify:
    or substantially overlap across different submissions at the same
    meeting
 2. **Assessment inconsistencies** — proposed assessment weightings or
-   formats that conflict with programme-level policy stated in another
+   formats that conflict with course-level policy stated in another
    submission or in an approved parent document
 3. **Terminology inconsistencies** — the same concept described
    differently across related submissions (e.g. "AI literacy" vs
@@ -67,7 +67,7 @@ The prompt instructs the model to read all submissions and identify:
    an existing approved policy, even if not directly referenced in the
    submission
 5. **Missing cross-references** — submissions that affect shared
-   resources (e.g. a shared module appearing in two programmes) without
+   resources (e.g. a shared module appearing in two courses) without
    acknowledging the dependency
 
 The model is instructed to return structured JSON: a list of flagged
@@ -107,12 +107,12 @@ summarisation approach may be needed.
 
 ### Purpose
 
-When a programme-level learning outcome (PLO) changes — for example, a
+When a course-level learning outcome (PLO) changes — for example, a
 new outcome is added: "Students acquire familiarity with AI-driven data
-analysis workflows" — the programme coordinator must identify which
+analysis workflows" — the course coordinator must identify which
 module-level outcomes need to change, which assessments are affected,
 and which modules have a gap. Currently this requires manually reading
-all module specifications for the programme.
+all module specifications for the course.
 
 The LLM drafts this impact mapping, which the coordinator reviews,
 adjusts, and approves before initiation tasks are pushed to module
@@ -120,16 +120,16 @@ convenors.
 
 ### Trigger
 
-Fired when a programme-level change request is approved and the
+Fired when a course-level change request is approved and the
 backwards scheduler is about to generate initiation tasks. The impact
 analysis runs first; the coordinator reviews it before confirming that
 initiation tasks should be pushed.
 
 ### Inputs
 
-- The proposed new or amended PLO (from the programme-level change
+- The proposed new or amended PLO (from the course-level change
   request form)
-- All current approved module specifications for the affected programme
+- All current approved module specifications for the affected course
   (via `AssetVersion` records)
 - All current approved module-level learning outcomes
 - The existing PLO-to-MLO alignment matrix if one exists
@@ -157,7 +157,7 @@ Output is structured JSON with one entry per module.
 ### Output
 
 An `LLMResult` record of type `impact_analysis` is created, linked to
-the programme-level change request document. The coordinator sees a
+the course-level change request document. The coordinator sees a
 structured table in the UI: one row per module, with coverage
 classification, explanation, and (where applicable) draft MLO text.
 
@@ -171,7 +171,7 @@ generated.
 
 - It does not initiate any workflows or create any documents
 - It does not determine which modules are in scope — that is derived
-  from the programme's document hierarchy
+  from the course's document hierarchy
 - Draft MLOs are clearly labelled as AI-generated suggestions requiring
   author review and approval through the normal workflow
 
@@ -202,7 +202,7 @@ form, the form opens blank and the draft is inserted when it arrives.
 
 - The current approved version of the document being revised
 - The change context: what change has been requested, what PLO or
-  programme-level decision is driving it
+  course-level decision is driving it
 - For learning outcomes: the relevant FHEQ level descriptor and any
   applicable Subject Benchmark Statement excerpts
 - For assessments: the module's credit value, existing assessment
@@ -274,7 +274,7 @@ is part of the submission user journey.
 ### Inputs
 
 - The document being submitted (full content)
-- The parent document it relates to (e.g. the programme specification
+- The parent document it relates to (e.g. the course specification
   for a module specification submission)
 - Any policy documents referenced in the submission
 - The committee's standing requirements for submissions of this type
@@ -286,7 +286,7 @@ is part of the submission user journey.
    those in the structured fields)
 2. **Parent document alignment** — does the proposed content align
    with the parent document it belongs to? (e.g. does the module
-   specification's stated level match the programme's requirements
+   specification's stated level match the course's requirements
    for modules at that point in the structure?)
 3. **Rationale adequacy** — does the rationale field actually justify
    the change being made, or is it generic boilerplate? The model
@@ -314,7 +314,7 @@ visible to reviewers.
 
 ### Purpose
 
-Programme and module specifications must align with external regulatory
+Course and module specifications must align with external regulatory
 frameworks: FHEQ level descriptors, relevant Subject Benchmark
 Statements, PSRB requirements (where applicable), and OfS conditions
 of registration. Manual checking against these frameworks is time-
@@ -337,7 +337,7 @@ they begin their assessment.
   level field)
 - The relevant Subject Benchmark Statement(s) (selected by subject
   area field, retrieved from a stored reference library)
-- Any applicable PSRB requirements (stored per programme as tenant
+- Any applicable PSRB requirements (stored per course as tenant
   configuration)
 
 ### What the LLM does
@@ -345,7 +345,7 @@ they begin their assessment.
 1. **FHEQ level alignment** — for each learning outcome, does it
    clearly correspond to a descriptor at the stated FHEQ level? Flags
    outcomes that appear to be pitched at a different level.
-2. **Subject Benchmark coverage** — does the programme/module address
+2. **Subject Benchmark coverage** — does the course/module address
    the threshold standards described in the relevant Subject Benchmark
    Statement? Identifies benchmark areas with no corresponding
    coverage.
@@ -379,7 +379,7 @@ evidence base for future regulatory review.
 
 The backwards scheduler produces a set of `ScheduledMilestone` records
 with computed dates, risk flags, and critical path indicators. This
-output is precise but technical. Programme coordinators need to
+output is precise but technical. Course coordinators need to
 understand not just the dates but the reasoning behind them —
 particularly when committee meeting constraints are creating a tight
 deadline or when a document is at risk.
@@ -414,9 +414,9 @@ Produces a short narrative (3–5 paragraphs) covering:
    immediately, and by whom
 4. **Risks** — any milestones that are at risk, with a plain-English
    explanation of why (e.g. "The March TLC meeting is the last one
-   before the programme specification submission deadline. If the
+   before the course specification submission deadline. If the
    COMP4012 assessment brief is not submitted by 14 February, it will
-   miss that meeting and the programme specification cannot proceed to
+   miss that meeting and the course specification cannot proceed to
    Senate in May.")
 5. **Decisions needed** — any deferred linking decisions that require
    the coordinator's attention
