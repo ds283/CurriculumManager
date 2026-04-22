@@ -7,6 +7,11 @@ Part 1 (Sections 1–6) drives immediate skeleton generation.
 Part 2 (Sections 7–9) describes planned subsystems — design for
 compatibility but do not generate implementation code for those sections.
 
+**Note:** The system uses internal Sussex vocabulary to refer to curriculum
+entities. In particular, 'course' is used to refer to programmes of student,
+in alignment with the Sussex 2025/26 Academic Framework. This is synonymous
+with 'programme' used more widely in the sector.
+
 ---
 
 ## Part 1 — Generate now
