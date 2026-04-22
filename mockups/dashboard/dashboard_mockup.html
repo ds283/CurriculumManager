@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CurriculumGov — Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #ffffff;
+  --bg2:      #f7f8fa;
+  --bg3:      #f0f2f5;
+  --border:   #e2e5ea;
+  --borderL:  #edf0f4;
+  --t1:       #111827;
+  --t2:       #6b7280;
+  --t3:       #9ca3af;
+  --blue:     #185FA5;
+  --blueL:    #E6F1FB;
+  --blueM:    #85B7EB;
+  --green:    #3B6D11;
+  --greenL:   #EAF3DE;
+  --greenM:   #639922;
+  --amber:    #854F0B;
+  --amberL:   #FAEEDA;
+  --amberM:   #FAC775;
+  --red:      #A32D2D;
+  --redL:     #FCEBEB;
+  --tealL:    #E1F5EE;
+  --teal:     #085041;
+  --tealD:    #0F6E56;
+  --mono:     'Courier New', monospace;
+  --r:        8px;
+  --rsm:      5px;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg3); color: var(--t1); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+/* SHELL */
+.shell { display: flex; flex-direction: column; height: 100vh; max-width: 1300px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+
+/* TOPBAR */
+.topbar { height: 48px; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+.brand { font-size: 13px; font-weight: 600; color: var(--t1); letter-spacing: -0.02em; }
+.divider { width: 1px; height: 16px; background: var(--border); }
+.ctx { font-size: 12px; color: var(--t2); }
+.spacer { flex: 1; }
+
+/* View switcher in topbar */
+.view-tabs { display: flex; gap: 2px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 2px; }
+.vt { font-size: 11px; font-weight: 500; padding: 4px 12px; border-radius: 6px; border: none; background: transparent; color: var(--t2); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.vt.on { background: var(--bg); color: var(--t1); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.av-blue { background: #B5D4F4; color: #0C447C; }
+.av-teal { background: #9FE1CB; color: #085041; }
+.uname { font-size: 12px; color: var(--t2); }
+.role-badge { font-size: 10px; font-weight: 500; border-radius: 10px; padding: 2px 8px; }
+.rb-blue { background: var(--blueL); color: var(--blue); }
+.rb-teal { background: var(--tealL); color: var(--tealD); }
+
+/* BODY */
+.body { display: flex; flex: 1; min-height: 0; }
+
+/* SIDEBAR */
+.sidebar { width: 196px; background: var(--bg); border-right: 1px solid var(--border); padding: 10px 0; flex-shrink: 0; overflow-y: auto; }
+.ns { padding: 8px 14px 3px; font-size: 10px; font-weight: 600; color: var(--t3); letter-spacing: 0.07em; text-transform: uppercase; }
+.ni { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; color: var(--t2); cursor: pointer; border-left: 2px solid transparent; }
+.ni:hover { background: var(--bg2); }
+.ni.on-blue  { color: var(--blue);  border-left-color: var(--blue);  background: #E6F1FB22; font-weight: 500; }
+.ni.on-teal  { color: var(--tealD); border-left-color: var(--tealD); background: #E1F5EE22; font-weight: 500; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.badge { margin-left: auto; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; }
+.b-blue   { background: #B5D4F4; color: #0C447C; }
+.b-amber  { background: var(--amberM); color: #633806; }
+.b-red    { background: #F7C1C1; color: #791F1F; }
+
+/* CONTENT */
+.content { flex: 1; padding: 16px; overflow-y: auto; }
+
+/* PAGE HEADER */
+.ph { margin-bottom: 14px; }
+.ph-title { font-size: 16px; font-weight: 600; color: var(--t1); }
+.ph-sub { font-size: 12px; color: var(--t2); margin-top: 2px; }
+
+/* METRIC ROW */
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.mc { background: var(--bg2); border-radius: var(--r); padding: 10px 12px; border: 1px solid var(--borderL); }
+.mc-label { font-size: 11px; color: var(--t2); margin-bottom: 4px; }
+.mc-val { font-size: 22px; font-weight: 600; color: var(--t1); line-height: 1; }
+.mc-sub { font-size: 10px; color: var(--t3); margin-top: 2px; }
+
+/* TWO COL */
+.two { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; margin-bottom: 12px; }
+
+/* CARDS */
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.card-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 0; }
+.card-title { font-size: 12px; font-weight: 600; color: var(--t1); }
+.card-link { font-size: 11px; color: var(--blue); cursor: pointer; }
+.card-b { padding: 10px 14px 12px; }
+
+/* PILLS */
+.pill { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.p-green  { background: var(--greenL); color: var(--green); }
+.p-blue   { background: var(--blueL);  color: var(--blue);  }
+.p-amber  { background: var(--amberL); color: var(--amber); }
+.p-red    { background: var(--redL);   color: var(--red);   }
+.p-gray   { background: var(--bg2);    color: var(--t2);    }
+
+/* TASK LIST */
+.tasks { display: flex; flex-direction: column; gap: 7px; }
+.task { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: var(--rsm); border: 1px solid var(--border); border-left-width: 3px; }
+.task.urgent { border-left-color: #E24B4A; }
+.task.warn   { border-left-color: #EF9F27; }
+.task.info   { border-left-color: #378ADD; }
+.task-icon { width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 1px; }
+.ti-red   { background: var(--redL);   color: var(--red);   }
+.ti-amber { background: var(--amberL); color: var(--amber); }
+.ti-blue  { background: var(--blueL);  color: var(--blue);  }
+.ti-teal  { background: var(--tealL);  color: var(--tealD); }
+.ti-gray  { background: var(--bg2);    color: var(--t2);    }
+.task-body { flex: 1; min-width: 0; }
+.task-title { font-size: 12px; font-weight: 500; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-meta  { font-size: 11px; color: var(--t2); margin-top: 1px; }
+.due { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; flex-shrink: 0; margin-top: 2px; }
+.due-red   { background: var(--redL);   color: var(--red);   }
+.due-amber { background: var(--amberL); color: var(--amber); }
+.due-gray  { background: var(--bg2);    color: var(--t2);    }
+
+/* MODULE LIST */
+.mods { display: flex; flex-direction: column; }
+.mod-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--borderL); }
+.mod-row:last-child { border-bottom: none; }
+.mod-code { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--t2); }
+.mod-name { font-size: 12px; color: var(--t1); margin-top: 1px; }
+.mod-cr   { font-size: 11px; color: var(--t3); white-space: nowrap; }
+
+/* PIPELINE (full) */
+.pipeline-wrap { padding: 4px 0 2px; }
+.pipeline { display: flex; align-items: center; }
+.ps { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.pd { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; border: 2px solid; position: relative; }
+.pd-done    { background: var(--greenL); color: var(--green);  border-color: var(--greenM); }
+.pd-current { background: var(--blueL);  color: var(--blue);   border-color: var(--blue);   }
+.pd-pending { background: var(--bg2);    color: var(--t3);     border-color: var(--border); }
+.pl { font-size: 9px; color: var(--t2); text-align: center; line-height: 1.3; }
+.pc { height: 2px; flex: 1; background: var(--border); margin-bottom: 14px; }
+.pc.done { background: var(--greenM); }
+.cur-badge { position: absolute; top: -11px; font-size: 8px; background: var(--blue); color: #fff; padding: 1px 4px; border-radius: 3px; white-space: nowrap; }
+
+/* TIMELINE */
+.tl { display: flex; flex-direction: column; gap: 0; }
+.tl-item { display: flex; gap: 10px; padding-bottom: 10px; position: relative; }
+.tl-item:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 1px; background: var(--borderL); }
+.tl-dot { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; margin-top: 1px; }
+.tl-title { font-size: 12px; color: var(--t1); }
+.tl-meta  { font-size: 11px; color: var(--t2); margin-top: 1px; }
+
+/* COMMITTEE LIST */
+.cmts { display: flex; flex-direction: column; }
+.cmt { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--borderL); }
+.cmt:last-child { border-bottom: none; }
+.cmt-date { text-align: right; min-width: 68px; flex-shrink: 0; }
+.cmt-d { font-size: 12px; font-weight: 600; color: var(--t1); }
+.cmt-days { font-size: 10px; color: var(--t2); }
+.cmt-name { flex: 1; font-size: 12px; color: var(--t1); }
+.cmt-meta { font-size: 11px; color: var(--t2); margin-top: 1px; }
+
+/* WORKFLOW DETAIL CARD */
+.wf-detail { margin-bottom: 12px; }
+.wf-footer { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--borderL); font-size: 11px; color: var(--t2); }
+
+/* PROGRAMME CARDS (coordinator) */
+.prog-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 8px; }
+.prog-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--borderL); }
+.prog-info { flex: 1; }
+.prog-title { font-size: 13px; font-weight: 600; color: var(--t1); }
+.prog-meta  { font-size: 11px; color: var(--t2); margin-top: 2px; }
+.prog-body  { padding: 10px 14px 12px; }
+.prog-bar-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--t2); margin-bottom: 4px; }
+.prog-track { height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; }
+.prog-fill  { height: 100%; border-radius: 3px; }
+.prog-pills { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+
+/* FLAGS */
+.flags { display: flex; flex-direction: column; gap: 6px; }
+.flag { display: flex; gap: 8px; padding: 8px 10px; border-radius: var(--rsm); border: 1px solid; font-size: 12px; }
+.f-red   { background: var(--redL);   border-color: #F09595; color: #501313; }
+.f-amber { background: var(--amberL); border-color: var(--amberM); color: #412402; }
+.f-blue  { background: var(--blueL);  border-color: var(--blueM); color: #042C53; }
+.flag-icon { font-size: 13px; flex-shrink: 0; margin-top: -1px; }
+.flag-title { font-weight: 600; font-size: 12px; }
+.flag-sub { font-size: 11px; margin-top: 2px; opacity: 0.85; }
+
+/* VIEWS */
+.view { display: none; }
+.view.on { display: block; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="brand">CurriculumGov</span>
+    <div class="divider"></div>
+    <span class="ctx">Faculty of Engineering &amp; Technology</span>
+    <div class="spacer"></div>
+    <div class="view-tabs">
+      <button class="vt on" onclick="switchView('faculty')">Faculty member view</button>
+      <button class="vt" onclick="switchView('coord')">Programme coordinator view</button>
+    </div>
+    <div class="spacer"></div>
+    <div id="user-faculty" style="display:flex;align-items:center;gap:8px;">
+      <div class="avatar av-blue">DR</div>
+      <span class="uname">Dr Rashida Khan</span>
+      <span class="role-badge rb-blue">Convenor</span>
+    </div>
+    <div id="user-coord" style="display:none;align-items:center;gap:8px;">
+      <div class="avatar av-teal">MC</div>
+      <span class="uname">Michael Chen</span>
+      <span class="role-badge rb-teal">Programme coordinator</span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- ══ FACULTY SIDEBAR ══ -->
+    <div class="sidebar" id="sb-faculty">
+      <div class="ni on-blue"><div class="dot" style="background:var(--blue)"></div>Dashboard</div>
+      <div class="ns">My modules</div>
+      <div class="ni"><div class="dot"></div>ENG4021<span class="badge b-amber">1</span></div>
+      <div class="ni"><div class="dot"></div>ENG3045</div>
+      <div class="ni"><div class="dot"></div>ENG3060</div>
+      <div class="ni"><div class="dot"></div>ENG2012</div>
+      <div class="ns">Workflows</div>
+      <div class="ni"><div class="dot"></div>My change requests<span class="badge b-blue">3</span></div>
+      <div class="ni"><div class="dot"></div>Tasks assigned to me<span class="badge b-red">2</span></div>
+      <div class="ns">Documents</div>
+      <div class="ni"><div class="dot"></div>Module specs</div>
+      <div class="ni"><div class="dot"></div>Assessments</div>
+      <div class="ni"><div class="dot"></div>Learning outcomes</div>
+    </div>
+
+    <!-- ══ COORDINATOR SIDEBAR ══ -->
+    <div class="sidebar" id="sb-coord" style="display:none;">
+      <div class="ni on-teal"><div class="dot" style="background:var(--tealD)"></div>Dashboard</div>
+      <div class="ns">Programmes</div>
+      <div class="ni"><div class="dot"></div>BEng Mechanical Eng<span class="badge b-amber">3</span></div>
+      <div class="ni"><div class="dot"></div>MEng Mechanical Eng</div>
+      <div class="ni"><div class="dot"></div>BEng Aerospace Eng<span class="badge b-red">1</span></div>
+      <div class="ns">Approvals</div>
+      <div class="ni"><div class="dot"></div>Pending review<span class="badge b-red">7</span></div>
+      <div class="ni"><div class="dot"></div>Committee queue<span class="badge b-blue">4</span></div>
+      <div class="ns">Reporting</div>
+      <div class="ni"><div class="dot"></div>Compliance overview</div>
+      <div class="ni"><div class="dot"></div>PSRB submissions</div>
+      <div class="ni"><div class="dot"></div>Audit trail</div>
+    </div>
+
+    <!-- ══ FACULTY CONTENT ══ -->
+    <div class="content view on" id="view-faculty">
+
+      <div class="ph">
+        <div class="ph-title">Good morning, Rashida</div>
+        <div class="ph-sub">Academic year 2025/26 · Autumn semester · 2 tasks need your attention</div>
+      </div>
+
+      <div class="metrics">
+        <div class="mc"><div class="mc-label">Modules owned</div><div class="mc-val">4</div><div class="mc-sub">All active</div></div>
+        <div class="mc"><div class="mc-label">Open workflows</div><div class="mc-val" style="color:var(--blue)">3</div><div class="mc-sub">1 awaiting you</div></div>
+        <div class="mc"><div class="mc-label">Tasks due soon</div><div class="mc-val" style="color:var(--red)">2</div><div class="mc-sub">Within 7 days</div></div>
+        <div class="mc"><div class="mc-label">Last published</div><div class="mc-val" style="font-size:14px;line-height:1.4">ENG3045</div><div class="mc-sub">12 days ago</div></div>
+      </div>
+
+      <div class="two">
+        <!-- Tasks -->
+        <div class="card">
+          <div class="card-h"><span class="card-title">Tasks requiring action</span><span class="card-link">View all</span></div>
+          <div class="card-b">
+            <div class="tasks">
+              <div class="task urgent">
+                <div class="task-icon ti-red">!</div>
+                <div class="task-body">
+                  <div class="task-title">Review TLC feedback — ENG4021 module spec</div>
+                  <div class="task-meta">Dept TLC returned with comments · CR-2025-041</div>
+                </div>
+                <span class="due due-red">2 days</span>
+              </div>
+              <div class="task warn">
+                <div class="task-icon ti-amber">i</div>
+                <div class="task-body">
+                  <div class="task-title">Complete assessment form — ENG4021 Slot A</div>
+                  <div class="task-meta">Initiated by change request CR-2025-041</div>
+                </div>
+                <span class="due due-amber">5 days</span>
+              </div>
+              <div class="task info">
+                <div class="task-icon ti-blue">i</div>
+                <div class="task-body">
+                  <div class="task-title">Initiate learning outcome update — ENG3060 MLO-C</div>
+                  <div class="task-meta">Flagged during reaccreditation pre-check · Optional until Jan 2026</div>
+                </div>
+                <span class="due due-gray">89 days</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modules -->
+        <div class="card">
+          <div class="card-h"><span class="card-title">My modules</span><span class="card-link">View all</span></div>
+          <div class="card-b">
+            <div class="mods">
+              <div class="mod-row">
+                <div><div class="mod-code">ENG4021</div><div class="mod-name">Advanced Structural Analysis</div></div>
+                <span class="mod-cr">20 cr · L7</span>
+                <span class="pill p-amber">In review</span>
+              </div>
+              <div class="mod-row">
+                <div><div class="mod-code">ENG3045</div><div class="mod-name">Thermodynamics &amp; Heat Transfer</div></div>
+                <span class="mod-cr">20 cr · L6</span>
+                <span class="pill p-green">Published</span>
+              </div>
+              <div class="mod-row">
+                <div><div class="mod-code">ENG3060</div><div class="mod-name">Computational Fluid Dynamics</div></div>
+                <span class="mod-cr">20 cr · L6</span>
+                <span class="pill p-green">Published</span>
+              </div>
+              <div class="mod-row">
+                <div><div class="mod-code">ENG2012</div><div class="mod-name">Engineering Mathematics II</div></div>
+                <span class="mod-cr">20 cr · L5</span>
+                <span class="pill p-green">Published</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active workflow -->
+      <div class="card wf-detail">
+        <div class="card-h">
+          <span class="card-title">Active workflow — ENG4021 module specification change (CR-2025-041)</span>
+          <span class="pill p-amber">Dept TLC review</span>
+        </div>
+        <div class="card-b">
+          <div class="pipeline-wrap">
+            <div class="pipeline">
+              <div class="ps"><div class="pd pd-done">✓</div><div class="pl">Draft &amp;<br>submit</div></div>
+              <div class="pc done"></div>
+              <div class="ps"><div class="pd pd-done">✓</div><div class="pl">Dept TLC<br>screen</div></div>
+              <div class="pc done"></div>
+              <div class="ps">
+                <div class="pd pd-current" style="position:relative;">
+                  <span class="cur-badge">Current</span>✎
+                </div>
+                <div class="pl" style="color:var(--blue);font-weight:500;">Convenor<br>revise</div>
+              </div>
+              <div class="pc"></div>
+              <div class="ps"><div class="pd pd-pending">·</div><div class="pl">Dept TLC<br>approve</div></div>
+              <div class="pc"></div>
+              <div class="ps"><div class="pd pd-pending">·</div><div class="pl">Faculty TLC<br>ratify</div></div>
+              <div class="pc"></div>
+              <div class="ps"><div class="pd pd-pending">·</div><div class="pl">Publish</div></div>
+            </div>
+          </div>
+          <div class="wf-footer">
+            Returned 3 Jan · Estimated publication: <strong>14 Feb 2026</strong> · Faculty TLC meeting: <strong>6 Feb 2026</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="two">
+        <!-- Timeline -->
+        <div class="card">
+          <div class="card-h"><span class="card-title">Recent activity</span></div>
+          <div class="card-b">
+            <div class="tl">
+              <div class="tl-item">
+                <div class="tl-dot" style="background:var(--amberL);color:var(--amber);font-size:8px;">TLC</div>
+                <div><div class="tl-title">Dept TLC returned CR-2025-041 with comments</div><div class="tl-meta">3 Jan 2026 · Dr S. Okonkwo (TLC Chair)</div></div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-dot" style="background:var(--greenL);color:var(--green);font-size:8px;">PUB</div>
+                <div><div class="tl-title">ENG3045 module specification published (v4)</div><div class="tl-meta">22 Dec 2025</div></div>
+              </div>
+              <div class="tl-item">
+                <div class="tl-dot" style="background:var(--blueL);color:var(--blue);font-size:8px;">SUB</div>
+                <div><div class="tl-title">CR-2025-041 submitted for review</div><div class="tl-meta">18 Dec 2025 · Dr Rashida Khan</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Committee dates -->
+        <div class="card">
+          <div class="card-h"><span class="card-title">Upcoming committee deadlines</span></div>
+          <div class="card-b">
+            <div class="cmts">
+              <div class="cmt">
+                <div class="cmt-date"><div class="cmt-d">16 Jan</div><div class="cmt-days" style="color:var(--red)">13 days</div></div>
+                <div><div class="cmt-name">Dept TLC submission deadline</div><div class="cmt-meta">For 30 Jan meeting</div></div>
+                <span class="pill p-amber">Action needed</span>
+              </div>
+              <div class="cmt">
+                <div class="cmt-date"><div class="cmt-d">30 Jan</div><div class="cmt-days">27 days</div></div>
+                <div><div class="cmt-name">Department TLC meeting</div><div class="cmt-meta">Agenda: CR-2025-041 (if resubmitted)</div></div>
+                <span class="pill p-gray">Upcoming</span>
+              </div>
+              <div class="cmt">
+                <div class="cmt-date"><div class="cmt-d">6 Feb</div><div class="cmt-days">34 days</div></div>
+                <div><div class="cmt-name">Faculty TLC meeting</div><div class="cmt-meta">Ratification stage</div></div>
+                <span class="pill p-gray">Upcoming</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /view-faculty -->
+
+
+    <!-- ══ COORDINATOR CONTENT ══ -->
+    <div class="content view" id="view-coord">
+
+      <div class="ph">
+        <div class="ph-title">Programme coordinator dashboard</div>
+        <div class="ph-sub">Michael Chen · Academic year 2025/26 · 3 programmes · 7 items awaiting review</div>
+      </div>
+
+      <div class="metrics">
+        <div class="mc"><div class="mc-label">Programmes managed</div><div class="mc-val">3</div><div class="mc-sub">2 BEng · 1 MEng</div></div>
+        <div class="mc"><div class="mc-label">Modules in scope</div><div class="mc-val">47</div><div class="mc-sub">44 published · 3 in flux</div></div>
+        <div class="mc"><div class="mc-label">Pending approval</div><div class="mc-val" style="color:var(--red)">7</div><div class="mc-sub">Awaiting your review</div></div>
+        <div class="mc"><div class="mc-label">Next committee</div><div class="mc-val" style="font-size:14px;line-height:1.4">30 Jan</div><div class="mc-sub">4 items on agenda</div></div>
+      </div>
+
+      <!-- Approval queue -->
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-h"><span class="card-title">Items requiring your approval</span><span class="card-link">View all</span></div>
+        <div class="card-b">
+          <div class="tasks">
+            <div class="task urgent">
+              <div class="task-icon ti-red">!</div>
+              <div class="task-body">
+                <div class="task-title">Module spec change — ENG4021 Advanced Structural Analysis</div>
+                <div class="task-meta">CR-2025-041 · Dr R. Khan · Dept TLC approval stage · Submission deadline 16 Jan</div>
+              </div>
+              <span class="due due-red">13 days</span>
+            </div>
+            <div class="task warn">
+              <div class="task-icon ti-amber">!</div>
+              <div class="task-body">
+                <div class="task-title">New learning outcome — ENG2089 MLO-D (proposed)</div>
+                <div class="task-meta">CR-2025-038 · Dr T. Adeyemi · Awaiting Dept TLC screen</div>
+              </div>
+              <span class="due due-amber">13 days</span>
+            </div>
+            <div class="task info">
+              <div class="task-icon ti-blue">i</div>
+              <div class="task-body">
+                <div class="task-title">Assessment change — BEng Aerospace ENG3071 Slot B weight</div>
+                <div class="task-meta">CR-2025-033 · Dr P. Williams · Faculty TLC ratification</div>
+              </div>
+              <span class="due due-gray">34 days</span>
+            </div>
+            <div class="task info" style="border-left-color:var(--border);">
+              <div class="task-icon ti-gray">i</div>
+              <div class="task-body">
+                <div class="task-title">4 further items in queue — 2 at Dept TLC, 2 at Faculty TLC</div>
+                <div class="task-meta">No action needed from you at this stage</div>
+              </div>
+              <span class="pill p-gray" style="flex-shrink:0;">In progress</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two">
+        <!-- Programme cards -->
+        <div>
+          <div class="prog-card">
+            <div class="prog-head">
+              <div class="prog-info">
+                <div class="prog-title">BEng Mechanical Engineering</div>
+                <div class="prog-meta">18 core modules · 6 optional · FHEQ Level 6 exit · 240 credits</div>
+              </div>
+              <span class="pill p-green">Published</span>
+            </div>
+            <div class="prog-body">
+              <div class="prog-bar-row"><span>Module spec currency</span><span style="font-weight:600;">22 / 24 within 3 years</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:92%;background:var(--greenM);"></div></div>
+              <div class="prog-pills">
+                <span class="pill p-amber">1 spec in review</span>
+                <span class="pill p-red">2 specs overdue review</span>
+                <span class="pill p-blue">Programme spec: v3</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="prog-card">
+            <div class="prog-head">
+              <div class="prog-info">
+                <div class="prog-title">BEng Aerospace Engineering</div>
+                <div class="prog-meta">16 core modules · 8 optional · FHEQ Level 6 exit · 240 credits</div>
+              </div>
+              <span class="pill p-amber">Spec update pending</span>
+            </div>
+            <div class="prog-body">
+              <div class="prog-bar-row"><span>Module spec currency</span><span style="font-weight:600;">14 / 24 within 3 years</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:58%;background:#BA7517;"></div></div>
+              <div class="prog-pills">
+                <span class="pill p-red">Assessment change in flight</span>
+                <span class="pill p-gray">PSRB review: Mar 2026</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="prog-card">
+            <div class="prog-head">
+              <div class="prog-info">
+                <div class="prog-title">MEng Mechanical Engineering</div>
+                <div class="prog-meta">22 core modules · 4 optional · FHEQ Level 7 exit · 300 credits</div>
+              </div>
+              <span class="pill p-green">Published</span>
+            </div>
+            <div class="prog-body">
+              <div class="prog-bar-row"><span>Module spec currency</span><span style="font-weight:600;">26 / 26 within 3 years</span></div>
+              <div class="prog-track"><div class="prog-fill" style="width:100%;background:var(--greenM);"></div></div>
+              <div class="prog-pills">
+                <span class="pill p-green">All specs current</span>
+                <span class="pill p-blue">No in-flight workflows</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right column: flags + committee dates -->
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card">
+            <div class="card-h"><span class="card-title">Compliance flags</span><span class="card-link">View report</span></div>
+            <div class="card-b">
+              <div class="flags">
+                <div class="flag f-red">
+                  <span class="flag-icon">⚑</span>
+                  <div>
+                    <div class="flag-title">BEng Aerospace: 2 stale module specs</div>
+                    <div class="flag-sub">ENG1004, ENG2031 — last approved &gt;3 years ago. PSRB submission at risk.</div>
+                  </div>
+                </div>
+                <div class="flag f-amber">
+                  <span class="flag-icon">⚠</span>
+                  <div>
+                    <div class="flag-title">BEng Mechanical: programme spec requires refresh</div>
+                    <div class="flag-sub">Linked modules updated since v3 publication. Coordinator action recommended.</div>
+                  </div>
+                </div>
+                <div class="flag f-blue">
+                  <span class="flag-icon">ℹ</span>
+                  <div>
+                    <div class="flag-title">MEng Mechanical: periodic review due 2026/27</div>
+                    <div class="flag-sub">Curriculum review workflow not yet initiated. Earliest start: Aug 2026.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><span class="card-title">Upcoming committee dates</span></div>
+            <div class="card-b">
+              <div class="cmts">
+                <div class="cmt">
+                  <div class="cmt-date"><div class="cmt-d">16 Jan</div><div class="cmt-days" style="color:var(--red)">13 days</div></div>
+                  <div><div class="cmt-name">Dept TLC submission deadline</div><div class="cmt-meta">2 items affected</div></div>
+                  <span class="pill p-red">Urgent</span>
+                </div>
+                <div class="cmt">
+                  <div class="cmt-date"><div class="cmt-d">30 Jan</div><div class="cmt-days">27 days</div></div>
+                  <div><div class="cmt-name">Department TLC</div><div class="cmt-meta">4 items on agenda</div></div>
+                  <span class="pill p-gray">Upcoming</span>
+                </div>
+                <div class="cmt">
+                  <div class="cmt-date"><div class="cmt-d">6 Feb</div><div class="cmt-days">34 days</div></div>
+                  <div><div class="cmt-name">Faculty TLC</div><div class="cmt-meta">1 item — ENG3071 assessment</div></div>
+                  <span class="pill p-gray">Upcoming</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /view-coord -->
+
+  </div><!-- /body -->
+</div><!-- /shell -->
+
+<script>
+function switchView(v) {
+  var isFaculty = v === 'faculty';
+
+  document.getElementById('view-faculty').className = 'content view' + (isFaculty ? ' on' : '');
+  document.getElementById('view-coord').className   = 'content view' + (isFaculty ? '' : ' on');
+  document.getElementById('sb-faculty').style.display = isFaculty ? '' : 'none';
+  document.getElementById('sb-coord').style.display   = isFaculty ? 'none' : '';
+  document.getElementById('user-faculty').style.display = isFaculty ? 'flex' : 'none';
+  document.getElementById('user-coord').style.display   = isFaculty ? 'none' : 'flex';
+
+  document.querySelectorAll('.vt').forEach(function(b, i) {
+    b.className = 'vt' + ((i === 0 && isFaculty) || (i === 1 && !isFaculty) ? ' on' : '');
+  });
+}
+</script>
+</body>
+</html>

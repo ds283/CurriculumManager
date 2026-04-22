@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CurriculumGov — Module Specs &amp; Assessments</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f8fa;
+  --bg-tertiary: #f0f2f5;
+  --border: #e2e5ea;
+  --border-light: #edf0f4;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --blue: #185FA5;
+  --blue-light: #E6F1FB;
+  --blue-mid: #85B7EB;
+  --green: #3B6D11;
+  --green-light: #EAF3DE;
+  --green-mid: #639922;
+  --amber: #854F0B;
+  --amber-light: #FAEEDA;
+  --amber-mid: #FAC775;
+  --red: #A32D2D;
+  --red-light: #FCEBEB;
+  --teal-light: #E1F5EE;
+  --teal: #085041;
+  --mono: 'Courier New', Courier, monospace;
+  --radius: 8px;
+  --radius-sm: 5px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── SHELL ── */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 1280px;
+  margin: 0 auto;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  height: 48px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 14px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.topbar-brand { font-size: 13px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.02em; }
+.topbar-divider { width: 1px; height: 16px; background: var(--border); }
+.topbar-ctx { font-size: 12px; color: var(--text-secondary); }
+.topbar-spacer { flex: 1; }
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #B5D4F4; color: #0C447C;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; flex-shrink: 0;
+}
+.topbar-name { font-size: 12px; color: var(--text-secondary); }
+.role-badge {
+  font-size: 10px; font-weight: 500;
+  background: var(--blue-light); color: var(--blue);
+  border-radius: 10px; padding: 2px 8px;
+}
+
+/* ── BODY ── */
+.body-wrap { display: flex; flex: 1; min-height: 0; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 196px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  padding: 10px 0;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.nav-section {
+  padding: 8px 14px 3px;
+  font-size: 10px; font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px;
+  font-size: 12px; color: var(--text-secondary);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.1s;
+  user-select: none;
+}
+.nav-item:hover { background: var(--bg-secondary); }
+.nav-item.active {
+  color: var(--blue);
+  border-left-color: var(--blue);
+  background: #E6F1FB33;
+  font-weight: 500;
+}
+.nav-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--border); flex-shrink: 0;
+}
+.nav-item.active .nav-dot { background: var(--blue); }
+.nav-badge {
+  margin-left: auto;
+  font-size: 10px; font-weight: 600;
+  padding: 1px 6px; border-radius: 10px;
+}
+.nb-blue { background: #B5D4F4; color: #0C447C; }
+.nb-amber { background: var(--amber-mid); color: #633806; }
+.nb-red { background: #F7C1C1; color: #791F1F; }
+
+/* ── CONTENT AREA ── */
+.content { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* ── PAGE HEAD ── */
+.page-head {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px 0;
+  flex-shrink: 0;
+}
+.page-title-row {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 10px;
+}
+.page-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.page-count { font-size: 12px; color: var(--text-secondary); }
+.page-tabs { display: flex; }
+.ptab {
+  font-size: 12px; font-weight: 500;
+  color: var(--text-secondary);
+  padding: 7px 14px;
+  border: none; background: transparent; cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.1s, border-color 0.1s;
+}
+.ptab:hover { color: var(--text-primary); }
+.ptab.on { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ── TOOLBAR ── */
+.toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 20px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.filter-group { display: flex; gap: 5px; flex-wrap: wrap; }
+.filter-pill {
+  font-size: 11px; padding: 3px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.filter-pill:hover { border-color: var(--blue-mid); color: var(--blue); }
+.filter-pill.on {
+  background: var(--blue-light);
+  border-color: var(--blue-mid);
+  color: var(--blue);
+  font-weight: 500;
+}
+.toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.sort-label { font-size: 11px; color: var(--text-secondary); }
+.sort-sel {
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 7px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ── LIST AREA ── */
+.list-area {
+  flex: 1; padding: 14px 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto;
+}
+
+/* ── PILLS ── */
+.pill {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 10px;
+  white-space: nowrap;
+}
+.pill-green { background: var(--green-light); color: var(--green); }
+.pill-blue  { background: var(--blue-light);  color: var(--blue);  }
+.pill-amber { background: var(--amber-light); color: var(--amber); }
+.pill-red   { background: var(--red-light);   color: var(--red);   }
+.pill-gray  { background: var(--bg-secondary);color: var(--text-secondary); }
+
+/* ── BUTTONS ── */
+.btn {
+  font-size: 11px; padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer; white-space: nowrap;
+  transition: all 0.1s;
+}
+.btn:hover { border-color: var(--blue-mid); color: var(--blue); }
+.btn-primary {
+  background: var(--blue-light);
+  border-color: var(--blue-mid);
+  color: var(--blue);
+  font-weight: 500;
+}
+.btn-primary:hover { background: #D0E7F8; }
+
+/* ═══════════════════════════════
+   MODULE SPECS VIEW
+═══════════════════════════════ */
+.spec-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.spec-card.stale { border-color: var(--amber-mid); }
+
+.spec-head {
+  display: grid;
+  grid-template-columns: 64px 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+}
+.spec-code-col { }
+.spec-code {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.spec-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.spec-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.spec-actions { display: flex; gap: 5px; }
+
+.spec-body {
+  border-top: 1px solid var(--border-light);
+  padding: 9px 14px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  background: var(--bg-secondary);
+}
+.spec-field-label {
+  font-size: 9px; font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 2px;
+}
+.spec-field-value { font-size: 12px; color: var(--text-primary); }
+
+/* Workflow footer */
+.spec-wf {
+  border-top: 1px solid var(--border-light);
+  padding: 8px 14px;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-primary);
+}
+.spec-wf.stale-footer {
+  background: #FAEEDA33;
+  border-top-color: var(--amber-mid);
+}
+.wf-cr { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+
+/* Mini pipeline */
+.pipeline-mini {
+  display: flex; align-items: center; gap: 0;
+  flex: 1;
+}
+.pm-stage { display: flex; align-items: center; gap: 4px; }
+.pm-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 1.5px solid;
+  flex-shrink: 0;
+}
+.pm-dot.done    { background: var(--green-light); border-color: var(--green-mid); }
+.pm-dot.current { background: var(--blue-light);  border-color: var(--blue); }
+.pm-dot.pending { background: var(--bg-secondary); border-color: var(--border); }
+.pm-label { font-size: 9px; color: var(--text-secondary); white-space: nowrap; }
+.pm-label.current { color: var(--blue); font-weight: 500; }
+.pm-line { height: 1px; width: 16px; background: var(--border); flex-shrink: 0; }
+.pm-line.done { background: var(--green-mid); }
+
+.wf-due { font-size: 11px; color: var(--red); font-weight: 500; flex-shrink: 0; }
+.wf-link { font-size: 11px; color: var(--blue); cursor: pointer; margin-left: 6px; white-space: nowrap; flex-shrink: 0; }
+.wf-link:hover { text-decoration: underline; }
+
+
+/* ═══════════════════════════════
+   ASSESSMENTS VIEW
+═══════════════════════════════ */
+.assess-group { margin-bottom: 6px; }
+
+.assess-group-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  cursor: default;
+}
+.ag-code {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 700;
+  color: var(--text-secondary);
+}
+.ag-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.ag-meta { font-size: 11px; color: var(--text-secondary); margin-left: auto; }
+
+.assess-table-wrap {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+table.at {
+  width: 100%; border-collapse: collapse;
+  table-layout: fixed;
+}
+table.at th {
+  font-size: 10px; font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+table.at td {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+table.at tr:last-child td { border-bottom: none; }
+table.at tbody tr:hover td { background: var(--bg-secondary); }
+table.at tr.retired td { opacity: 0.5; }
+
+.col-slot  { width: 70px; }
+.col-type  { width: 90px; }
+.col-wt    { width: 58px; text-align: right !important; }
+.col-period{ width: 80px; }
+.col-week  { width: 86px; }
+.col-mlo   { }
+.col-status{ width: 110px; }
+.col-act   { width: 64px; text-align: right !important; }
+
+.slot-code {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 700;
+  color: var(--text-secondary);
+}
+.retired-tag { font-size: 9px; font-style: italic; color: var(--text-tertiary); margin-left: 4px; }
+
+.mlo-tags { display: flex; gap: 3px; flex-wrap: wrap; }
+.mlo-tag {
+  font-family: var(--mono);
+  font-size: 10px; padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--teal-light);
+  color: var(--teal);
+}
+.act-link { font-size: 11px; color: var(--blue); cursor: pointer; }
+.act-link:hover { text-decoration: underline; }
+
+/* ── VIEWS ── */
+.view { display: none; flex-direction: column; flex: 1; min-height: 0; }
+.view.on { display: flex; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="topbar-brand">CurriculumGov</span>
+    <div class="topbar-divider"></div>
+    <span class="topbar-ctx">Faculty of Engineering &amp; Technology</span>
+    <div class="topbar-spacer"></div>
+    <div class="avatar">DR</div>
+    <span class="topbar-name">Dr Rashida Khan</span>
+    <span class="role-badge">Convenor</span>
+  </div>
+
+  <div class="body-wrap">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="nav-item" onclick="location.href='#'">
+        <div class="nav-dot"></div>Dashboard
+      </div>
+      <div class="nav-section">My modules</div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>ENG4021
+        <span class="nav-badge nb-amber">1</span>
+      </div>
+      <div class="nav-item"><div class="nav-dot"></div>ENG3045</div>
+      <div class="nav-item"><div class="nav-dot"></div>ENG3060</div>
+      <div class="nav-item"><div class="nav-dot"></div>ENG2012</div>
+      <div class="nav-section">Workflows</div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>My change requests
+        <span class="nav-badge nb-blue">3</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-dot"></div>Tasks assigned to me
+        <span class="nav-badge nb-red">2</span>
+      </div>
+      <div class="nav-section">Documents</div>
+      <div class="nav-item active" id="nav-specs" onclick="show('specs')">
+        <div class="nav-dot"></div>Module specs
+      </div>
+      <div class="nav-item" id="nav-assess" onclick="show('assess')">
+        <div class="nav-dot"></div>Assessments
+      </div>
+      <div class="nav-item"><div class="nav-dot"></div>Learning outcomes</div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- ══ MODULE SPECS VIEW ══ -->
+      <div class="view on" id="view-specs">
+        <div class="page-head">
+          <div class="page-title-row">
+            <span class="page-title">Module specifications</span>
+            <span class="page-count">4 modules · scoped to active convenorships</span>
+          </div>
+          <div class="page-tabs">
+            <button class="ptab on">All</button>
+            <button class="ptab">Published</button>
+            <button class="ptab">In workflow</button>
+            <button class="ptab">Never published</button>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="filter-group">
+            <span class="filter-pill on">All levels</span>
+            <span class="filter-pill">L5</span>
+            <span class="filter-pill">L6</span>
+            <span class="filter-pill">L7</span>
+          </div>
+          <div class="toolbar-right">
+            <span class="sort-label">Sort:</span>
+            <select class="sort-sel">
+              <option>Module code</option>
+              <option>Last published</option>
+              <option>Status</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="list-area">
+
+          <!-- ENG4021 — in workflow -->
+          <div class="spec-card">
+            <div class="spec-head">
+              <div class="spec-code-col"><span class="spec-code">ENG4021</span></div>
+              <div>
+                <div class="spec-name">Advanced Structural Analysis</div>
+                <div class="spec-meta">Dept of Mechanical Engineering · 20 credits · FHEQ Level 7 · Autumn Semester</div>
+              </div>
+              <span class="pill pill-amber">In review</span>
+              <div class="spec-actions">
+                <button class="btn">View spec</button>
+                <button class="btn">History</button>
+              </div>
+            </div>
+            <div class="spec-body">
+              <div>
+                <div class="spec-field-label">Current version</div>
+                <div class="spec-field-value">v3 · Published 14 Mar 2024</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Subject area</div>
+                <div class="spec-field-value">Structural Engineering</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Programmes</div>
+                <div class="spec-field-value">BEng Mechanical Eng, MEng Mechanical Eng</div>
+              </div>
+            </div>
+            <div class="spec-wf">
+              <span class="wf-cr">CR-2025-041</span>
+              <div class="pipeline-mini">
+                <div class="pm-stage">
+                  <div class="pm-dot done"></div>
+                </div>
+                <div class="pm-line done"></div>
+                <div class="pm-stage">
+                  <div class="pm-dot done"></div>
+                </div>
+                <div class="pm-line done"></div>
+                <div class="pm-stage">
+                  <div class="pm-dot current"></div>
+                  <span class="pm-label current">Convenor revise</span>
+                </div>
+                <div class="pm-line"></div>
+                <div class="pm-stage">
+                  <div class="pm-dot pending"></div>
+                  <span class="pm-label">Dept TLC approve</span>
+                </div>
+                <div class="pm-line"></div>
+                <div class="pm-stage">
+                  <div class="pm-dot pending"></div>
+                  <span class="pm-label">Faculty TLC</span>
+                </div>
+                <div class="pm-line"></div>
+                <div class="pm-stage">
+                  <div class="pm-dot pending"></div>
+                  <span class="pm-label">Publish</span>
+                </div>
+              </div>
+              <span class="wf-due">Action due 7 Jan</span>
+              <span class="wf-link">Resume →</span>
+            </div>
+          </div>
+
+          <!-- ENG3045 — published -->
+          <div class="spec-card">
+            <div class="spec-head">
+              <div class="spec-code-col"><span class="spec-code">ENG3045</span></div>
+              <div>
+                <div class="spec-name">Thermodynamics &amp; Heat Transfer</div>
+                <div class="spec-meta">Dept of Mechanical Engineering · 20 credits · FHEQ Level 6 · Spring Semester</div>
+              </div>
+              <span class="pill pill-green">Published</span>
+              <div class="spec-actions">
+                <button class="btn">View spec</button>
+                <button class="btn">History</button>
+                <button class="btn btn-primary">Initiate change</button>
+              </div>
+            </div>
+            <div class="spec-body">
+              <div>
+                <div class="spec-field-label">Current version</div>
+                <div class="spec-field-value">v4 · Published 22 Dec 2025</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Subject area</div>
+                <div class="spec-field-value">Thermodynamics</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Programmes</div>
+                <div class="spec-field-value">BEng Mechanical Eng</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ENG3060 — published -->
+          <div class="spec-card">
+            <div class="spec-head">
+              <div class="spec-code-col"><span class="spec-code">ENG3060</span></div>
+              <div>
+                <div class="spec-name">Computational Fluid Dynamics</div>
+                <div class="spec-meta">Dept of Mechanical Engineering · 20 credits · FHEQ Level 6 · Autumn Semester</div>
+              </div>
+              <span class="pill pill-green">Published</span>
+              <div class="spec-actions">
+                <button class="btn">View spec</button>
+                <button class="btn">History</button>
+                <button class="btn btn-primary">Initiate change</button>
+              </div>
+            </div>
+            <div class="spec-body">
+              <div>
+                <div class="spec-field-label">Current version</div>
+                <div class="spec-field-value">v2 · Published 4 Sep 2024</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Subject area</div>
+                <div class="spec-field-value">Fluid Mechanics</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Programmes</div>
+                <div class="spec-field-value">BEng Mechanical Eng, BEng Aerospace Eng</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ENG2012 — approaching stale -->
+          <div class="spec-card stale">
+            <div class="spec-head">
+              <div class="spec-code-col"><span class="spec-code">ENG2012</span></div>
+              <div>
+                <div class="spec-name">Engineering Mathematics II</div>
+                <div class="spec-meta">Dept of Mechanical Engineering · 20 credits · FHEQ Level 5 · Autumn Semester</div>
+              </div>
+              <span class="pill pill-amber">Review due</span>
+              <div class="spec-actions">
+                <button class="btn">View spec</button>
+                <button class="btn">History</button>
+                <button class="btn btn-primary">Initiate change</button>
+              </div>
+            </div>
+            <div class="spec-body">
+              <div>
+                <div class="spec-field-label">Current version</div>
+                <div class="spec-field-value">v1 · Published 3 Jan 2023</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Subject area</div>
+                <div class="spec-field-value">Mathematics</div>
+              </div>
+              <div>
+                <div class="spec-field-label">Programmes</div>
+                <div class="spec-field-value">BEng Mechanical Eng, BEng Aerospace Eng, MEng Mechanical Eng</div>
+              </div>
+            </div>
+            <div class="spec-wf stale-footer">
+              <span style="font-size:11px;color:var(--amber);">Published Jan 2023 — approaching 3-year review threshold. No in-flight workflow.</span>
+              <span class="wf-link" style="color:var(--amber);">Initiate review →</span>
+            </div>
+          </div>
+
+        </div><!-- /list-area -->
+      </div><!-- /view-specs -->
+
+
+      <!-- ══ ASSESSMENTS VIEW ══ -->
+      <div class="view" id="view-assess">
+        <div class="page-head">
+          <div class="page-title-row">
+            <span class="page-title">Assessments</span>
+            <span class="page-count">11 active slots across 4 modules</span>
+          </div>
+          <div class="page-tabs">
+            <button class="ptab on">All</button>
+            <button class="ptab">Published</button>
+            <button class="ptab">In workflow</button>
+            <button class="ptab">Retired</button>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="filter-group">
+            <span class="filter-pill on">All types</span>
+            <span class="filter-pill">Exam</span>
+            <span class="filter-pill">Coursework</span>
+            <span class="filter-pill">Practical</span>
+          </div>
+          <div class="toolbar-right">
+            <span class="sort-label">Group:</span>
+            <select class="sort-sel">
+              <option>By module</option>
+              <option>By status</option>
+              <option>By submission week</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="list-area">
+
+          <!-- ENG4021 -->
+          <div class="assess-group">
+            <div class="assess-group-header">
+              <span class="ag-code">ENG4021</span>
+              <span class="ag-name">Advanced Structural Analysis</span>
+              <span class="pill pill-amber">Spec in review</span>
+              <span class="ag-meta">3 active slots · 20 cr · L7</span>
+            </div>
+            <div class="assess-table-wrap">
+              <table class="at">
+                <thead>
+                  <tr>
+                    <th class="col-slot">Slot</th>
+                    <th class="col-type">Type</th>
+                    <th class="col-wt" style="text-align:right">Weight</th>
+                    <th class="col-period">Period</th>
+                    <th class="col-week">Sub. week</th>
+                    <th class="col-mlo">MLOs addressed</th>
+                    <th class="col-status">Brief status</th>
+                    <th class="col-act"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="slot-code">cwk-01</span></td>
+                    <td>Coursework</td>
+                    <td class="col-wt">40%</td>
+                    <td>Autumn</td>
+                    <td>Week 8</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span><span class="mlo-tag">MLO-B</span></div></td>
+                    <td><span class="pill pill-green">Published v2</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="slot-code">cwk-02</span></td>
+                    <td>Coursework</td>
+                    <td class="col-wt">30%</td>
+                    <td>Autumn</td>
+                    <td>Week 12</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-C</span><span class="mlo-tag">MLO-D</span></div></td>
+                    <td><span class="pill pill-amber">In workflow</span></td>
+                    <td style="text-align:right"><span class="act-link">Resume</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="slot-code">exam-01</span></td>
+                    <td>Exam</td>
+                    <td class="col-wt">30%</td>
+                    <td>Autumn</td>
+                    <td>Exam period</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span><span class="mlo-tag">MLO-C</span><span class="mlo-tag">MLO-D</span></div></td>
+                    <td><span class="pill pill-green">Published v1</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENG3045 -->
+          <div class="assess-group">
+            <div class="assess-group-header">
+              <span class="ag-code">ENG3045</span>
+              <span class="ag-name">Thermodynamics &amp; Heat Transfer</span>
+              <span class="pill pill-green">Published</span>
+              <span class="ag-meta">2 active slots · 1 retired · 20 cr · L6</span>
+            </div>
+            <div class="assess-table-wrap">
+              <table class="at">
+                <thead>
+                  <tr>
+                    <th class="col-slot">Slot</th>
+                    <th class="col-type">Type</th>
+                    <th class="col-wt" style="text-align:right">Weight</th>
+                    <th class="col-period">Period</th>
+                    <th class="col-week">Sub. week</th>
+                    <th class="col-mlo">MLOs addressed</th>
+                    <th class="col-status">Brief status</th>
+                    <th class="col-act"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="slot-code">cwk-01</span></td>
+                    <td>Coursework</td>
+                    <td class="col-wt">50%</td>
+                    <td>Spring</td>
+                    <td>Week 7</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span><span class="mlo-tag">MLO-B</span><span class="mlo-tag">MLO-C</span></div></td>
+                    <td><span class="pill pill-green">Published v3</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="slot-code">exam-01</span></td>
+                    <td>Exam</td>
+                    <td class="col-wt">50%</td>
+                    <td>Spring</td>
+                    <td>Exam period</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-B</span><span class="mlo-tag">MLO-C</span><span class="mlo-tag">MLO-D</span></div></td>
+                    <td><span class="pill pill-green">Published v2</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                  <tr class="retired">
+                    <td><span class="slot-code">prb-01</span><span class="retired-tag">retired</span></td>
+                    <td>Practical</td>
+                    <td class="col-wt">—</td>
+                    <td>Spring</td>
+                    <td>—</td>
+                    <td><div class="mlo-tags"></div></td>
+                    <td><span class="pill pill-gray">Retired Jan 2024</span></td>
+                    <td style="text-align:right"><span class="act-link" style="color:var(--text-secondary)">History</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENG3060 -->
+          <div class="assess-group">
+            <div class="assess-group-header">
+              <span class="ag-code">ENG3060</span>
+              <span class="ag-name">Computational Fluid Dynamics</span>
+              <span class="pill pill-green">Published</span>
+              <span class="ag-meta">2 active slots · 20 cr · L6</span>
+            </div>
+            <div class="assess-table-wrap">
+              <table class="at">
+                <thead>
+                  <tr>
+                    <th class="col-slot">Slot</th>
+                    <th class="col-type">Type</th>
+                    <th class="col-wt" style="text-align:right">Weight</th>
+                    <th class="col-period">Period</th>
+                    <th class="col-week">Sub. week</th>
+                    <th class="col-mlo">MLOs addressed</th>
+                    <th class="col-status">Brief status</th>
+                    <th class="col-act"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="slot-code">cwk-01</span></td>
+                    <td>Coursework</td>
+                    <td class="col-wt">60%</td>
+                    <td>Autumn</td>
+                    <td>Week 10</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span><span class="mlo-tag">MLO-B</span></div></td>
+                    <td><span class="pill pill-green">Published v1</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="slot-code">exam-01</span></td>
+                    <td>Exam</td>
+                    <td class="col-wt">40%</td>
+                    <td>Autumn</td>
+                    <td>Exam period</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span><span class="mlo-tag">MLO-C</span></div></td>
+                    <td><span class="pill pill-green">Published v1</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ENG2012 -->
+          <div class="assess-group">
+            <div class="assess-group-header">
+              <span class="ag-code">ENG2012</span>
+              <span class="ag-name">Engineering Mathematics II</span>
+              <span class="pill pill-amber">Review due</span>
+              <span class="ag-meta">3 active slots · 20 cr · L5</span>
+            </div>
+            <div class="assess-table-wrap">
+              <table class="at">
+                <thead>
+                  <tr>
+                    <th class="col-slot">Slot</th>
+                    <th class="col-type">Type</th>
+                    <th class="col-wt" style="text-align:right">Weight</th>
+                    <th class="col-period">Period</th>
+                    <th class="col-week">Sub. week</th>
+                    <th class="col-mlo">MLOs addressed</th>
+                    <th class="col-status">Brief status</th>
+                    <th class="col-act"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="slot-code">cwk-01</span></td>
+                    <td>Coursework</td>
+                    <td class="col-wt">30%</td>
+                    <td>Autumn</td>
+                    <td>Week 6</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span></div></td>
+                    <td><span class="pill pill-green">Published v1</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="slot-code">cwk-02</span></td>
+                    <td>Coursework</td>
+                    <td class="col-wt">30%</td>
+                    <td>Autumn</td>
+                    <td>Week 11</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-B</span><span class="mlo-tag">MLO-C</span></div></td>
+                    <td><span class="pill pill-green">Published v1</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                  <tr>
+                    <td><span class="slot-code">exam-01</span></td>
+                    <td>Exam</td>
+                    <td class="col-wt">40%</td>
+                    <td>Autumn</td>
+                    <td>Exam period</td>
+                    <td><div class="mlo-tags"><span class="mlo-tag">MLO-A</span><span class="mlo-tag">MLO-B</span><span class="mlo-tag">MLO-C</span></div></td>
+                    <td><span class="pill pill-green">Published v1</span></td>
+                    <td style="text-align:right"><span class="act-link">View</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /list-area -->
+      </div><!-- /view-assess -->
+
+    </div><!-- /content -->
+  </div><!-- /body-wrap -->
+</div><!-- /shell -->
+
+<script>
+function show(v) {
+  ['specs','assess'].forEach(id => {
+    const view = document.getElementById('view-' + id);
+    const nav  = document.getElementById('nav-'  + id);
+    const isActive = id === v;
+    view.className = 'view' + (isActive ? ' on' : '');
+    nav.className  = 'nav-item' + (isActive ? ' active' : '');
+    nav.querySelector('.nav-dot').style.background =
+      isActive ? 'var(--blue)' : 'var(--border)';
+  });
+}
+
+// Filter pill toggle (visual only)
+document.querySelectorAll('.filter-pill').forEach(pill => {
+  pill.addEventListener('click', function() {
+    this.closest('.filter-group').querySelectorAll('.filter-pill')
+        .forEach(p => p.classList.remove('on'));
+    this.classList.add('on');
+  });
+});
+
+// Tab toggle (visual only)
+document.querySelectorAll('.page-tabs').forEach(tabGroup => {
+  tabGroup.querySelectorAll('.ptab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      tabGroup.querySelectorAll('.ptab').forEach(t => t.classList.remove('on'));
+      this.classList.add('on');
+    });
+  });
+});
+</script>
+</body>
+</html>

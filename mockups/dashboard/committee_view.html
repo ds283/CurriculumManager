@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CurriculumGov — Committee Meeting View</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:     #ffffff; --bg2: #f7f8fa; --bg3: #f0f2f5;
+  --bdr:    #e2e5ea; --bdrL: #edf0f4;
+  --t1:     #111827; --t2: #6b7280; --t3: #9ca3af;
+  --blue:   #185FA5; --blueL: #E6F1FB; --blueM: #85B7EB;
+  --green:  #3B6D11; --greenL: #EAF3DE; --greenM: #639922;
+  --amber:  #854F0B; --amberL: #FAEEDA; --amberM: #FAC775;
+  --red:    #A32D2D; --redL: #FCEBEB;
+  --purple: #5B21B6; --purpleL: #EDE9FE; --purpleM: #A78BFA;
+  --tealL:  #E1F5EE; --tealD: #0F6E56;
+  --mono: 'Courier New', monospace;
+  --r: 8px; --rsm: 5px;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg3); color: var(--t1); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+.shell { display: flex; flex-direction: column; height: 100vh; max-width: 1300px; margin: 0 auto; border-left: 1px solid var(--bdr); border-right: 1px solid var(--bdr); }
+
+/* TOPBAR */
+.topbar { height: 48px; background: var(--bg); border-bottom: 1px solid var(--bdr); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+.brand { font-size: 13px; font-weight: 600; color: var(--t1); letter-spacing: -0.02em; }
+.div { width: 1px; height: 16px; background: var(--bdr); }
+.ctx { font-size: 12px; color: var(--t2); }
+.sp { flex: 1; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: #C7D2FE; color: #3730A3; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.uname { font-size: 12px; color: var(--t2); }
+.rb { font-size: 10px; font-weight: 500; border-radius: 10px; padding: 2px 8px; background: #EDE9FE; color: #5B21B6; }
+
+/* BODY */
+.body { display: flex; flex: 1; min-height: 0; }
+
+/* SIDEBAR */
+.sidebar { width: 196px; background: var(--bg); border-right: 1px solid var(--bdr); padding: 10px 0; flex-shrink: 0; overflow-y: auto; }
+.ns { padding: 8px 14px 3px; font-size: 10px; font-weight: 600; color: var(--t3); letter-spacing: 0.07em; text-transform: uppercase; }
+.ni { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; color: var(--t2); border-left: 2px solid transparent; cursor: default; }
+.ni.on { color: var(--purple); border-left-color: var(--purple); background: #EDE9FE22; font-weight: 500; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bdr); flex-shrink: 0; }
+.ni.on .dot { background: var(--purple); }
+.nbadge { margin-left: auto; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; }
+.nb-r { background: #F7C1C1; color: #791F1F; }
+.nb-a { background: var(--amberM); color: #633806; }
+.nb-b { background: #B5D4F4; color: #0C447C; }
+.nb-p { background: var(--purpleL); color: var(--purple); }
+
+/* CONTENT */
+.content { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+
+/* MEETING HEADER BAR */
+.meeting-bar { background: var(--bg); border-bottom: 1px solid var(--bdr); padding: 12px 20px; flex-shrink: 0; }
+.meeting-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.meeting-title { font-size: 16px; font-weight: 600; color: var(--t1); }
+.meeting-meta-row { display: flex; align-items: center; gap: 16px; }
+.meeting-meta-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--t2); }
+.mi-icon { font-size: 13px; }
+
+/* TABS */
+.tabs { display: flex; border-bottom: 1px solid var(--bdr); background: var(--bg); padding: 0 20px; flex-shrink: 0; }
+.tab { font-size: 12px; font-weight: 500; color: var(--t2); padding: 8px 14px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.1s; }
+.tab:hover { color: var(--t1); }
+.tab.on { color: var(--purple); border-bottom-color: var(--purple); }
+.tab-badge { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; font-size: 9px; font-weight: 700; margin-left: 5px; background: var(--redL); color: var(--red); }
+
+/* MAIN SCROLL AREA */
+.scroll { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+/* PILLS */
+.pill { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.p-g { background: var(--greenL); color: var(--green); }
+.p-b { background: var(--blueL);  color: var(--blue);  }
+.p-a { background: var(--amberL); color: var(--amber); }
+.p-r { background: var(--redL);   color: var(--red);   }
+.p-p { background: var(--purpleL);color: var(--purple);}
+.p-x { background: var(--bg2);    color: var(--t2);    }
+
+/* CARD */
+.card { background: var(--bg); border: 1px solid var(--bdr); border-radius: var(--r); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.card-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 0; }
+.card-title { font-size: 12px; font-weight: 600; color: var(--t1); }
+.card-link { font-size: 11px; color: var(--blue); cursor: pointer; }
+.card-b { padding: 10px 14px 12px; }
+
+/* ── AI SCREENING PANEL ── */
+.ai-panel { border: 1px solid var(--purpleM); border-radius: var(--r); background: var(--bg); overflow: hidden; }
+.ai-header { background: linear-gradient(135deg, #EDE9FE 0%, #F5F3FF 100%); border-bottom: 1px solid var(--purpleM); padding: 11px 14px; display: flex; align-items: center; gap: 10px; }
+.ai-icon { width: 28px; height: 28px; border-radius: 6px; background: var(--purple); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.ai-title { font-size: 13px; font-weight: 600; color: var(--purple); }
+.ai-sub { font-size: 11px; color: #7C3AED; margin-top: 1px; }
+.ai-meta { margin-left: auto; text-align: right; font-size: 10px; color: #7C3AED; }
+.ai-body { padding: 12px 14px; }
+.ai-summary-row { display: flex; gap: 10px; margin-bottom: 12px; }
+.ai-count { flex: 1; background: var(--bg2); border-radius: var(--rsm); padding: 8px 10px; border: 1px solid var(--bdrL); }
+.ai-count-n { font-size: 20px; font-weight: 700; line-height: 1; }
+.ai-count-l { font-size: 10px; color: var(--t2); margin-top: 2px; }
+.ai-flags { display: flex; flex-direction: column; gap: 8px; }
+.ai-flag { border-radius: var(--rsm); padding: 10px 12px; border: 1px solid; }
+.af-blocking { background: #FEF2F2; border-color: #FCA5A5; }
+.af-significant { background: var(--amberL); border-color: var(--amberM); }
+.af-advisory { background: var(--blueL); border-color: var(--blueM); }
+.af-top { display: flex; align-items: flex-start; gap: 8px; }
+.af-sev { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; margin-top: 1px; letter-spacing: 0.05em; text-transform: uppercase; }
+.sev-b { background: var(--red); color: #fff; }
+.sev-s { background: var(--amber); color: #fff; }
+.sev-a { background: var(--blue); color: #fff; }
+.af-desc { font-size: 12px; color: var(--t1); flex: 1; }
+.af-items { margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; }
+.af-item { font-size: 10px; font-family: var(--mono); font-weight: 600; padding: 1px 6px; border-radius: 3px; background: rgba(0,0,0,0.06); color: var(--t1); }
+.af-actions { display: flex; gap: 6px; margin-top: 8px; }
+.af-btn { font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: var(--rsm); border: 1px solid; cursor: pointer; }
+.afb-dismiss { border-color: var(--bdr); background: var(--bg); color: var(--t2); }
+.afb-action  { border-color: var(--purple); background: var(--purpleL); color: var(--purple); }
+.ai-disclaimer { margin-top: 10px; padding: 7px 10px; background: var(--bg2); border-radius: var(--rsm); font-size: 10px; color: var(--t3); border: 1px solid var(--bdrL); }
+
+/* ── AGENDA TABLE ── */
+.agenda-table-wrap { overflow: hidden; border-radius: 0 0 var(--rsm) var(--rsm); }
+table.ag { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.ag th { font-size: 10px; font-weight: 600; color: var(--t3); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px; background: var(--bg); border-bottom: 1px solid var(--bdr); text-align: left; }
+table.ag td { font-size: 12px; padding: 9px 10px; border-bottom: 1px solid var(--bdrL); vertical-align: middle; color: var(--t1); }
+table.ag tr:last-child td { border-bottom: none; }
+table.ag tbody tr:hover td { background: var(--bg2); }
+.ag-n   { width: 40px; color: var(--t3); font-size: 11px; }
+.ag-ref { width: 100px; }
+.ag-type{ width: 100px; }
+.ag-doc { }
+.ag-sub { width: 90px; }
+.ag-flag{ width: 80px; text-align: center; }
+.ag-act { width: 90px; text-align: right; }
+.ref-code { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--t2); }
+.doc-name { font-size: 12px; font-weight: 500; color: var(--t1); }
+.doc-meta { font-size: 11px; color: var(--t2); margin-top: 1px; }
+.act-link { font-size: 11px; color: var(--blue); cursor: pointer; }
+.act-link:hover { text-decoration: underline; }
+.ai-flag-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 10px; font-weight: 700; }
+.fld-r { background: var(--redL); color: var(--red); }
+.fld-a { background: var(--amberL); color: var(--amber); }
+.fld-g { background: var(--greenL); color: var(--green); }
+.fld-x { background: var(--bg2); color: var(--t3); }
+
+/* ── MILESTONES ── */
+.milestone-list { display: flex; flex-direction: column; gap: 0; }
+.ms-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--bdrL); }
+.ms-item:last-child { border-bottom: none; }
+.ms-date-col { width: 90px; flex-shrink: 0; text-align: right; }
+.ms-date { font-size: 12px; font-weight: 600; color: var(--t1); }
+.ms-days { font-size: 10px; color: var(--t2); }
+.ms-line { width: 1px; background: var(--bdr); align-self: stretch; flex-shrink: 0; margin: 3px 0; }
+.ms-body { flex: 1; }
+.ms-title { font-size: 12px; font-weight: 500; color: var(--t1); }
+.ms-meta { font-size: 11px; color: var(--t2); margin-top: 2px; }
+.ms-docs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+.ms-doc-tag { font-size: 10px; font-family: var(--mono); font-weight: 600; padding: 1px 6px; border-radius: 3px; background: var(--bg2); color: var(--t2); border: 1px solid var(--bdrL); }
+.ms-status { flex-shrink: 0; }
+
+/* ── SUMMARY STRIP ── */
+.summary-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 2px; }
+.ss-card { background: var(--bg); border: 1px solid var(--bdrL); border-radius: var(--rsm); padding: 8px 10px; }
+.ss-n { font-size: 20px; font-weight: 700; line-height: 1; }
+.ss-l { font-size: 10px; color: var(--t2); margin-top: 2px; }
+
+/* ── PUBLICATION TARGETS ── */
+.pt-list { display: flex; flex-direction: column; gap: 8px; }
+.pt-item { border: 1px solid var(--bdr); border-radius: var(--rsm); overflow: hidden; }
+.pt-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--bg2); border-bottom: 1px solid var(--bdrL); }
+.pt-name { font-size: 12px; font-weight: 600; color: var(--t1); flex: 1; }
+.pt-body { padding: 8px 12px; }
+.pt-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--t2); margin-bottom: 3px; }
+.pt-track { height: 5px; background: var(--bg2); border-radius: 3px; overflow: hidden; border: 1px solid var(--bdrL); }
+.pt-fill { height: 100%; border-radius: 3px; }
+.pt-docs { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+
+/* VIEW TOGGLE */
+.view { display: none; }
+.view.on { display: flex; flex-direction: column; gap: 14px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="brand">CurriculumGov</span>
+    <div class="div"></div>
+    <span class="ctx">Faculty of Engineering &amp; Technology</span>
+    <div class="sp"></div>
+    <div class="avatar">SO</div>
+    <span class="uname">Dr S. Okonkwo</span>
+    <span class="rb">TLC Chair</span>
+  </div>
+
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="ni"><div class="dot"></div>Dashboard</div>
+      <div class="ns">Committees</div>
+      <div class="ni on"><div class="dot"></div>Dept TLC<span class="nbadge nb-r">3</span></div>
+      <div class="ni"><div class="dot"></div>Faculty TLC</div>
+      <div class="ns">Meetings</div>
+      <div class="ni"><div class="dot"></div>30 Jan 2026<span class="nbadge nb-p">Current</span></div>
+      <div class="ni"><div class="dot"></div>6 Mar 2026</div>
+      <div class="ni"><div class="dot"></div>1 May 2026</div>
+      <div class="ns">Reports</div>
+      <div class="ni"><div class="dot"></div>Screening reports<span class="nbadge nb-a">2</span></div>
+      <div class="ni"><div class="dot"></div>Pub. targets</div>
+      <div class="ni"><div class="dot"></div>Audit trail</div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- MEETING HEADER -->
+      <div class="meeting-bar">
+        <div class="meeting-title-row">
+          <span class="meeting-title">Department Teaching &amp; Learning Committee — 30 January 2026</span>
+          <span class="pill p-a">Submission deadline passed</span>
+        </div>
+        <div class="meeting-meta-row">
+          <span class="meeting-meta-item"><span class="mi-icon">📍</span>Engineering Building, Room 2.14 · 14:00</span>
+          <span class="meeting-meta-item"><span class="mi-icon">📋</span>8 agenda items</span>
+          <span class="meeting-meta-item"><span class="mi-icon">⏱</span>Submission closed 16 Jan 2026</span>
+          <span class="meeting-meta-item"><span class="mi-icon">🤖</span>AI screening: <strong style="color:var(--red)">3 flags</strong></span>
+        </div>
+      </div>
+
+      <!-- TABS -->
+      <div class="tabs">
+        <button class="tab on" onclick="showTab('agenda')">Agenda &amp; submissions<span class="tab-badge">3</span></button>
+        <button class="tab" onclick="showTab('screen')">AI screening report<span class="tab-badge">3</span></button>
+        <button class="tab" onclick="showTab('milestones')">Milestones &amp; targets</button>
+      </div>
+
+      <!-- SCROLL AREA -->
+      <div class="scroll">
+
+        <!-- ══ AGENDA TAB ══ -->
+        <div class="view on" id="tab-agenda">
+
+          <div class="summary-strip">
+            <div class="ss-card"><div class="ss-n">8</div><div class="ss-l">Agenda items</div></div>
+            <div class="ss-card"><div class="ss-n" style="color:var(--green)">3</div><div class="ss-l">For approval</div></div>
+            <div class="ss-card"><div class="ss-n" style="color:var(--blue)">3</div><div class="ss-l">For noting</div></div>
+            <div class="ss-card"><div class="ss-n" style="color:var(--amber)">2</div><div class="ss-l">For discussion</div></div>
+            <div class="ss-card"><div class="ss-n" style="color:var(--red)">3</div><div class="ss-l">AI flags</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <span class="card-title">Agenda items</span>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-size:11px;color:var(--t2);">AI flag:</span>
+                <span class="pill p-r" style="font-size:9px;">● Blocking</span>
+                <span class="pill p-a" style="font-size:9px;">● Significant</span>
+                <span class="pill p-b" style="font-size:9px;">● Advisory</span>
+                <span class="pill p-x" style="font-size:9px;">● None</span>
+              </div>
+            </div>
+            <div class="card-b" style="padding:0;">
+              <div class="agenda-table-wrap">
+                <table class="ag">
+                  <thead>
+                    <tr>
+                      <th class="ag-n">#</th>
+                      <th class="ag-ref">Reference</th>
+                      <th class="ag-type">Type</th>
+                      <th class="ag-doc">Document / submission</th>
+                      <th class="ag-sub">Submitted by</th>
+                      <th class="ag-flag" style="text-align:center;">AI flag</th>
+                      <th class="ag-act"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="ag-n">1</td>
+                      <td><span class="ref-code">CR-2025-041</span></td>
+                      <td><span class="pill p-g">For approval</span></td>
+                      <td>
+                        <div class="doc-name">ENG4021 — Module specification change</div>
+                        <div class="doc-meta">Advanced Structural Analysis · L7 → L7 · Dr R. Khan</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">Dr R. Khan<br>14 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-r" title="Blocking flag">!</span></td>
+                      <td style="text-align:right;"><span class="act-link">Review</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">2</td>
+                      <td><span class="ref-code">CR-2025-038</span></td>
+                      <td><span class="pill p-g">For approval</span></td>
+                      <td>
+                        <div class="doc-name">ENG2089 — New learning outcome MLO-D</div>
+                        <div class="doc-meta">Systems Engineering · L6 · Dr T. Adeyemi</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">Dr T. Adeyemi<br>12 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-r" title="Blocking flag">!</span></td>
+                      <td style="text-align:right;"><span class="act-link">Review</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">3</td>
+                      <td><span class="ref-code">CR-2025-035</span></td>
+                      <td><span class="pill p-g">For approval</span></td>
+                      <td>
+                        <div class="doc-name">ENG3060 — Assessment cwk-01 weight change</div>
+                        <div class="doc-meta">Computational Fluid Dynamics · L6 · Dr R. Khan</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">Dr R. Khan<br>15 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-a" title="Significant flag">~</span></td>
+                      <td style="text-align:right;"><span class="act-link">Review</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">4</td>
+                      <td><span class="ref-code">PT-2026-001</span></td>
+                      <td><span class="pill p-b">For noting</span></td>
+                      <td>
+                        <div class="doc-name">BEng Mechanical Eng — Publication target update</div>
+                        <div class="doc-meta">Programme specification · Target: 1 Jun 2026</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">M. Chen<br>10 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-x">–</span></td>
+                      <td style="text-align:right;"><span class="act-link">View</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">5</td>
+                      <td><span class="ref-code">CR-2025-029</span></td>
+                      <td><span class="pill p-b">For noting</span></td>
+                      <td>
+                        <div class="doc-name">ENG1010 — Module specification (minor update)</div>
+                        <div class="doc-meta">Engineering Foundations · L4 · Dr P. Mbeki</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">Dr P. Mbeki<br>11 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-x">–</span></td>
+                      <td style="text-align:right;"><span class="act-link">View</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">6</td>
+                      <td><span class="ref-code">CR-2025-027</span></td>
+                      <td><span class="pill p-b">For noting</span></td>
+                      <td>
+                        <div class="doc-name">ENG2030 — Learning outcome revision MLO-B</div>
+                        <div class="doc-meta">Materials Science · L5 · Dr H. Osei</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">Dr H. Osei<br>9 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-g">✓</span></td>
+                      <td style="text-align:right;"><span class="act-link">View</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">7</td>
+                      <td><span class="ref-code">DISC-001</span></td>
+                      <td><span class="pill p-a">For discussion</span></td>
+                      <td>
+                        <div class="doc-name">Programme-level AI literacy outcome — impact mapping</div>
+                        <div class="doc-meta">PLO proposal: "Develop skills with modern LLMs" · Coordinator: M. Chen</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">M. Chen<br>13 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-x">–</span></td>
+                      <td style="text-align:right;"><span class="act-link">View</span></td>
+                    </tr>
+                    <tr>
+                      <td class="ag-n">8</td>
+                      <td><span class="ref-code">DISC-002</span></td>
+                      <td><span class="pill p-a">For discussion</span></td>
+                      <td>
+                        <div class="doc-name">Assessment congestion report — Autumn 2025 Week 10–12</div>
+                        <div class="doc-meta">Congestion analysis · Timetabling coordinator</div>
+                      </td>
+                      <td style="font-size:11px;color:var(--t2);">Timetabling<br>14 Jan</td>
+                      <td style="text-align:center;"><span class="ai-flag-dot fld-a">~</span></td>
+                      <td style="text-align:right;"><span class="act-link">View</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ AI SCREENING TAB ══ -->
+        <div class="view" id="tab-screen">
+          <div class="ai-panel">
+            <div class="ai-header">
+              <div class="ai-icon">✦</div>
+              <div>
+                <div class="ai-title">AI committee screening report</div>
+                <div class="ai-sub">Cross-submission conflict analysis · Qwen 2.5 32B · Generated 17 Jan 2026 02:14</div>
+              </div>
+              <div class="ai-meta">
+                <div style="font-weight:600;">3 flags identified</div>
+                <div>8 submissions read · 47,300 tokens</div>
+                <div style="margin-top:2px;"><span class="pill p-r" style="font-size:9px;">1 blocking</span> <span class="pill p-a" style="font-size:9px;">1 significant</span> <span class="pill p-b" style="font-size:9px;">1 advisory</span></div>
+              </div>
+            </div>
+            <div class="ai-body">
+              <div class="ai-summary-row">
+                <div class="ai-count"><div class="ai-count-n" style="color:var(--red)">1</div><div class="ai-count-l">Blocking — committee must resolve before approval</div></div>
+                <div class="ai-count"><div class="ai-count-n" style="color:var(--amber)">1</div><div class="ai-count-l">Significant — recommend discussion before approval</div></div>
+                <div class="ai-count"><div class="ai-count-n" style="color:var(--blue)">1</div><div class="ai-count-l">Advisory — note for awareness only</div></div>
+                <div class="ai-count"><div class="ai-count-n" style="color:var(--green)">5</div><div class="ai-count-l">No issues detected</div></div>
+              </div>
+
+              <div class="ai-flags">
+
+                <!-- FLAG 1 — BLOCKING -->
+                <div class="ai-flag af-blocking">
+                  <div class="af-top">
+                    <span class="af-sev sev-b">Blocking</span>
+                    <div class="af-desc">
+                      <strong>FHEQ level mismatch — learning outcome pitched below stated module level.</strong>
+                      CR-2025-041 proposes a new MLO for ENG4021 (Level 7). The draft outcome reads: <em>"Demonstrate awareness of finite element methods and their application in structural problems."</em> The verb "demonstrate awareness" corresponds to FHEQ Level 5 threshold descriptors, not Level 7. Level 7 requires critical evaluation and synthesis. The FHEQ Level 7 descriptor for knowledge and understanding requires outcomes to involve <em>"originality in the application of knowledge."</em> This outcome as drafted would not satisfy Level 7 threshold.
+                      <div class="af-items" style="margin-top:6px;">
+                        <span class="af-item">CR-2025-041</span>
+                        <span class="af-item">ENG4021 proposed MLO-E</span>
+                        <span class="af-item">FHEQ Level 7 descriptor §3.2</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="af-actions">
+                    <button class="af-btn afb-action">Mark for action</button>
+                    <button class="af-btn afb-dismiss">Acknowledge</button>
+                    <span style="font-size:10px;color:var(--t3);margin-left:auto;align-self:center;">Not reviewed</span>
+                  </div>
+                </div>
+
+                <!-- FLAG 2 — SIGNIFICANT -->
+                <div class="ai-flag af-significant">
+                  <div class="af-top">
+                    <span class="af-sev sev-s">Significant</span>
+                    <div class="af-desc">
+                      <strong>Terminology inconsistency across linked submissions — AI/ML capability descriptors diverge.</strong>
+                      CR-2025-038 (ENG2089 MLO-D) describes outcomes involving <em>"machine learning pipeline construction."</em> Agenda item 7 (PLO proposal) uses the framing <em>"skills with modern LLMs."</em> These submissions are not formally linked but both modules belong to BEng Mechanical Engineering. If both are approved at this meeting without reconciliation, the programme will contain divergent terminology for related capabilities, which may complicate future PSRB mapping and the periodic review scheduled for 2026/27. Recommend the committee note the relationship and either defer one or agree shared terminology.
+                      <div class="af-items" style="margin-top:6px;">
+                        <span class="af-item">CR-2025-038</span>
+                        <span class="af-item">DISC-001</span>
+                        <span class="af-item">BEng Mechanical Eng PLO matrix</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="af-actions">
+                    <button class="af-btn afb-action">Mark for action</button>
+                    <button class="af-btn afb-dismiss">Acknowledge</button>
+                    <span style="font-size:10px;color:var(--t3);margin-left:auto;align-self:center;">Not reviewed</span>
+                  </div>
+                </div>
+
+                <!-- FLAG 3 — ADVISORY -->
+                <div class="ai-flag" style="background:var(--blueL);border-color:var(--blueM);">
+                  <div class="af-top">
+                    <span class="af-sev sev-a">Advisory</span>
+                    <div class="af-desc">
+                      <strong>Assessment weight change in CR-2025-035 affects a shared module — no cross-programme acknowledgement.</strong>
+                      ENG3060 belongs to both BEng Mechanical Engineering and BEng Aerospace Engineering (via ProgrammeModuleMembership). The proposed cwk-01 weight change from 50% to 60% affects students on both programmes. The submission does not reference the Aerospace programme or confirm that the programme coordinator for BEng Aerospace has been consulted. This does not constitute a governance conflict but the committee may wish to note the omission for the record.
+                      <div class="af-items" style="margin-top:6px;">
+                        <span class="af-item">CR-2025-035</span>
+                        <span class="af-item">ENG3060</span>
+                        <span class="af-item">BEng Aerospace Eng</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="af-actions">
+                    <button class="af-btn afb-action">Mark for action</button>
+                    <button class="af-btn afb-dismiss">Acknowledge</button>
+                    <span style="font-size:10px;color:var(--t3);margin-left:auto;align-self:center;">Not reviewed</span>
+                  </div>
+                </div>
+
+              </div><!-- /ai-flags -->
+
+              <div class="ai-disclaimer">
+                ✦ AI-generated · Advisory only · Generated by Qwen 2.5 32B (on-premises, Ollama) · Prompt version a3f9c2 · No institutional data was sent to external services · This report has no formal governance standing. All flags must be reviewed and actioned or dismissed by the committee chair before the meeting.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ MILESTONES TAB ══ -->
+        <div class="view" id="tab-milestones">
+
+          <div class="card">
+            <div class="card-h"><span class="card-title">Publication targets linked to this meeting</span></div>
+            <div class="card-b">
+              <div class="pt-list">
+                <div class="pt-item">
+                  <div class="pt-head">
+                    <span class="pt-name">BEng Mechanical Engineering — Programme specification v4</span>
+                    <span class="pill p-a">At risk</span>
+                    <span style="font-size:11px;color:var(--t2);">Target: 1 Jun 2026</span>
+                  </div>
+                  <div class="pt-body">
+                    <div class="pt-bar-label"><span>Critical path progress</span><span style="font-weight:600;">4 of 9 documents complete</span></div>
+                    <div class="pt-track"><div class="pt-fill" style="width:44%;background:var(--amber);"></div></div>
+                    <div class="pt-docs">
+                      <span class="pill p-g">ENG4021 spec ✓</span>
+                      <span class="pill p-g">ENG3045 spec ✓</span>
+                      <span class="pill p-a">ENG3060 assessment ⏳</span>
+                      <span class="pill p-r">ENG2089 MLO-D — blocked</span>
+                      <span class="pill p-x">+5 not yet started</span>
+                    </div>
+                    <div style="margin-top:8px;padding:8px 10px;background:var(--purpleL);border-radius:var(--rsm);border:1px solid var(--purpleM);">
+                      <div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:3px;">✦ AI schedule summary</div>
+                      <div style="font-size:11px;color:#4C1D95;line-height:1.5;">This meeting is the last Dept TLC before the Faculty TLC ratification window closes on 6 March. If CR-2025-038 (ENG2089 MLO-D) is not approved today, it will miss the Faculty TLC on 6 February and cannot be included in the programme specification submission. The publication target is at risk unless a deferral or exceptional route is agreed.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pt-item">
+                  <div class="pt-head">
+                    <span class="pt-name">BEng Aerospace Engineering — Programme specification v3</span>
+                    <span class="pill p-x">Not at risk</span>
+                    <span style="font-size:11px;color:var(--t2);">Target: 15 Sep 2026</span>
+                  </div>
+                  <div class="pt-body">
+                    <div class="pt-bar-label"><span>Critical path progress</span><span style="font-weight:600;">6 of 12 documents complete</span></div>
+                    <div class="pt-track"><div class="pt-fill" style="width:50%;background:var(--blue);"></div></div>
+                    <div class="pt-docs">
+                      <span class="pill p-a">ENG3060 assessment ⏳</span>
+                      <span class="pill p-x">+6 not yet started</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><span class="card-title">Scheduled milestones — next 60 days</span></div>
+            <div class="card-b">
+              <div class="milestone-list">
+                <div class="ms-item">
+                  <div class="ms-date-col"><div class="ms-date">30 Jan</div><div class="ms-days" style="color:var(--purple);font-weight:600;">Today</div></div>
+                  <div class="ms-line" style="background:var(--purple);"></div>
+                  <div class="ms-body">
+                    <div class="ms-title">Dept TLC meeting — approval decisions recorded</div>
+                    <div class="ms-meta">Outcomes trigger next stage transitions for all approved items</div>
+                    <div class="ms-docs"><span class="ms-doc-tag">CR-2025-041</span><span class="ms-doc-tag">CR-2025-038</span><span class="ms-doc-tag">CR-2025-035</span></div>
+                  </div>
+                  <div class="ms-status"><span class="pill p-p">In progress</span></div>
+                </div>
+                <div class="ms-item">
+                  <div class="ms-date-col"><div class="ms-date">6 Feb</div><div class="ms-days">7 days</div></div>
+                  <div class="ms-line"></div>
+                  <div class="ms-body">
+                    <div class="ms-title">Faculty TLC submission deadline</div>
+                    <div class="ms-meta">Documents approved today must reach Faculty TLC office by this date</div>
+                    <div class="ms-docs"><span class="ms-doc-tag">CR-2025-041</span><span class="ms-doc-tag">CR-2025-038</span></div>
+                  </div>
+                  <div class="ms-status"><span class="pill p-x">Upcoming</span></div>
+                </div>
+                <div class="ms-item">
+                  <div class="ms-date-col"><div class="ms-date">20 Feb</div><div class="ms-days">21 days</div></div>
+                  <div class="ms-line"></div>
+                  <div class="ms-body">
+                    <div class="ms-title">Faculty TLC meeting — ratification</div>
+                    <div class="ms-meta">Final ratification before programme specification can proceed</div>
+                    <div class="ms-docs"><span class="ms-doc-tag">CR-2025-041</span><span class="ms-doc-tag">CR-2025-038</span><span class="ms-doc-tag">CR-2025-035</span></div>
+                  </div>
+                  <div class="ms-status"><span class="pill p-x">Upcoming</span></div>
+                </div>
+                <div class="ms-item">
+                  <div class="ms-date-col"><div class="ms-date">6 Mar</div><div class="ms-days">35 days</div></div>
+                  <div class="ms-line"></div>
+                  <div class="ms-body">
+                    <div class="ms-title">Next Dept TLC — fallback slot</div>
+                    <div class="ms-meta">Items not approved today may be resubmitted. Post-March approval misses Faculty TLC window.</div>
+                    <div class="ms-docs"><span class="ms-doc-tag" style="border-color:var(--redL);color:var(--red);">CR-2025-038 if deferred</span></div>
+                  </div>
+                  <div class="ms-status"><span class="pill p-r">Risk</span></div>
+                </div>
+                <div class="ms-item">
+                  <div class="ms-date-col"><div class="ms-date">1 Jun</div><div class="ms-days">122 days</div></div>
+                  <div class="ms-line"></div>
+                  <div class="ms-body">
+                    <div class="ms-title">BEng Mechanical Eng — programme specification publication target</div>
+                    <div class="ms-meta">All dependent module documents must be in Approved state</div>
+                  </div>
+                  <div class="ms-status"><span class="pill p-a">At risk</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div><!-- /scroll -->
+    </div><!-- /content -->
+  </div><!-- /body -->
+</div><!-- /shell -->
+
+<script>
+function showTab(t) {
+  ['agenda','screen','milestones'].forEach(id => {
+    document.getElementById('tab-' + id).className = 'view' + (id === t ? ' on' : '');
+  });
+  document.querySelectorAll('.tab').forEach((btn, i) => {
+    const ids = ['agenda','screen','milestones'];
+    btn.className = 'tab' + (ids[i] === t ? ' on' : '');
+  });
+}
+</script>
+</body>
+</html>
