@@ -91,6 +91,56 @@ creation.
 
 ---
 
+### D3a — `Task` carries a direct FK to `PublicationTarget`
+
+A `Task` dispatched to a module convenor as part of a CLO-driven workflow
+carries a direct FK to the originating `PublicationTarget`. This is
+distinct from the `ScheduledMilestone → PublicationTarget` relationship and
+serves a different purpose: it represents an unresolved obligation on the
+target before any concrete document workflow has been initiated.
+
+The scheduler treats open `Task` records linked to a `PublicationTarget` as
+unresolved dependencies and surfaces them as risk flags in the coordinator
+dashboard. This is distinct from at-risk or critical-path computation on
+`ScheduledMilestone` records — a `Task` without a child milestone cannot
+have `must_be_complete_by` or `must_be_initiated_by` values, so it cannot
+participate in deadline arithmetic. Its role is solely to make the
+dependency gap visible.
+
+When a convenor nominates a document under a `Task` — whether by creating a
+new `ModuleOutcomeContent` or opening a revision workflow on an existing one
+— the resulting `WorkflowInstance` and `ScheduledMilestone` carry a FK back
+to the originating `Task`. This closes the dependency gap: the scheduler
+can now compute against a concrete milestone, and the coordinator dashboard
+can collapse the task and its child milestones into a coherent module-level
+view.
+
+A single `Task` may spawn multiple child `ScheduledMilestone` records — for
+example where a convenor creates a new MLO and simultaneously retires an
+existing one, or where assessment workflows are triggered downstream. All
+child milestones inherit the `PublicationTarget` linkage from the `Task`.
+
+**Model implications:**
+- `Task` requires a new nullable FK `publication_target → PublicationTarget`
+- `Task` requires a new nullable FK `scheduled_milestone → ScheduledMilestone`
+  for cases where the coordinator dispatches a task against a pre-existing
+  milestone (e.g. Path 2 or Path 3 initiation where a `ScheduledMilestone`
+  already exists with `document = NULL`)
+- `WorkflowInstance` and `ScheduledMilestone` require a new nullable FK
+  `originating_task → Task` to preserve the audit trail from document back
+  to the task that drove it
+
+**Rejected alternative — sentinel `ScheduledMilestone`:** a `ScheduledMilestone`
+with `document = NULL` was considered as the parent object representing the
+module obligation. This was rejected because such a milestone cannot carry
+`must_be_complete_by` or `must_be_initiated_by` values and is therefore
+opaque to the scheduler. The apparent advantage of keeping the dashboard
+homogeneous does not outweigh the semantic cost of a milestone that does not
+represent a scheduled document workflow. `Task` is the semantically correct
+object to represent an outstanding obligation dispatched to an actor.
+
+---
+
 ### D4 — Downstream work targets `ModuleOutcomeContent`, not `ModuleSpecificationContent`
 
 The unit of work pushed to module convenors in response to a CLO change is
@@ -353,3 +403,28 @@ The following questions need resolving before it can be implemented:
   simple field edit?
 
 **Prerequisite for:** D1 (Path 2 provisional variant).
+
+---
+
+### G8 — `Task` model fields for `PublicationTarget` linkage not yet specified
+
+D3a introduces two new FKs on `Task` and one on `WorkflowInstance` and
+`ScheduledMilestone`. The `Task` model is not yet fully specified in
+`data_models.md`. The following need resolving before implementation:
+
+- What is the full field specification for `Task`, including status
+  `TextChoices` sufficient to distinguish: dispatched-awaiting-response,
+  in-progress (convenor has nominated at least one document), complete
+  (all child milestones resolved), and withdrawn?
+- The `scheduled_milestone` FK on `Task` applies when a task is dispatched
+  against an already-existing `ScheduledMilestone` (Paths 2 and 3). In the
+  task-first path (no pre-existing milestone), this FK is NULL at dispatch
+  and remains NULL — the milestone is created by the convenor's action.
+  This dual-mode behaviour needs to be clearly documented and enforced in
+  `clean()`.
+- When a convenor nominates multiple documents under a single `Task`, the
+  coordinator dashboard must present these as a coherent module-level group.
+  The grouping query relies on `ScheduledMilestone.originating_task`. The
+  display logic for this view needs specifying in `UI_SPEC.md`.
+
+**Prerequisite for:** D3a, Stage 3 and Stage 4 implementation.
