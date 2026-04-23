@@ -1,0 +1,304 @@
+# CLO Workflow — Design Decisions and Open Questions
+
+Captured during walkthrough of the course-level outcome (CLO) introduction
+workflow. Covers the full lifecycle from coordinator initiation through to
+TLC committee submission. Approval and publication are out of scope for this
+document.
+
+---
+
+## Design Decisions
+
+These are resolved positions. Future design work should not contradict them
+without explicitly reconsidering the rationale recorded here.
+
+---
+
+### D1 — Three entry points for CLO workflow initiation
+
+A coordinator introducing a new `CourseOutcomeContent` document has three
+valid entry points:
+
+1. **Standalone unscheduled** — coordinator initiates directly; a `Document`
+   is created in `DRAFT` state and a `WorkflowInstance` is opened. No
+   `ScheduledMilestone` is involved.
+2. **CLO as terminal target** — coordinator creates a `PublicationTarget`
+   with `target_document_type = course_outcome`. The backwards scheduler
+   generates a `ScheduledMilestone` with `document = NULL` until the
+   workflow is initiated, then populates the FK.
+3. **CLO as dependency of a course specification target** — coordinator
+   creates a `PublicationTarget` for the course specification. The
+   dependency graph knows CLOs must be approved before the course spec can
+   proceed, so a `ScheduledMilestone` for the CLO is generated
+   automatically.
+
+Path 3 is the most common governance scenario. Paths 1 and 2 exist for
+cases where a CLO is being introduced outside a full periodic review cycle.
+
+---
+
+### D2 — `change_rationale` lives on the `Document` envelope
+
+The formal governance justification for a change is a universal concern
+across document types — not specific to CLOs. It is stored as a nullable
+`TextField` on the `Document` envelope, populated at workflow initiation,
+and visible to reviewers across all document types.
+
+It is nullable because not all document workflows are change-driven (e.g.
+initial CLO introduction at programme inception).
+
+---
+
+### D3 — Coordinator-to-convenor guidance travels via `Task.context_note`
+
+The coordinator's module-specific guidance note — surfaced in the mockup
+as "Coordinator note" — is not stored on the `CourseOutcomeContent` document.
+It belongs to the `Task` record pushed to the convenor, since it is addressed
+to a specific actor about a specific piece of downstream work.
+
+The `Task` model requires a new `context_note` nullable `TextField` to
+support this. This field is populated as a side effect of the coordinator
+approving the LLM impact analysis output, not authored directly on task
+creation.
+
+---
+
+### D4 — Downstream work targets `ModuleOutcomeContent`, not `ModuleSpecificationContent`
+
+The unit of work pushed to module convenors in response to a CLO change is
+a new or revised `ModuleOutcomeContent` document, not a full
+`ModuleSpecificationContent` revision.
+
+Rationale: requesting a full module spec revision is the wrong granularity
+when the change is targeted at a single outcome. It obscures the audit trail
+linking the MLO to the CLO that drove it, and imposes unnecessary authoring
+burden on the convenor.
+
+A `ModuleSpecificationContent` revision is triggered later, automatically,
+once all MLO and assessment workflows for the module have reached `Approved`.
+See D7.
+
+---
+
+### D5 — Assessment workflow trigger point is `ModuleOutcomeContent` reaching `SUBMIT`
+
+Assessment realignment workflows are initiated when `ModuleOutcomeContent`
+reaches `SUBMIT`, not `APPROVE`. This allows MLO review and assessment
+revision to proceed concurrently rather than serially.
+
+Reviewers of the MLO submission can see that assessment realignment is
+already in train, which is relevant committee context.
+
+---
+
+### D6 — Downstream workflows attach to the originating `PublicationTarget`
+
+Assessment workflows spawned from MLO submission are attached to the
+originating `PublicationTarget` via `MilestonePublicationTarget`. Their
+deadlines are computed by the backwards scheduler relative to the same
+target date, and their at-risk status feeds into the same critical path view.
+
+This attachment is a FSM side effect triggered when the downstream workflow
+is spawned — it does not require coordinator intervention.
+
+---
+
+### D7 — `ModuleSpecificationContent` revision is auto-initiated, late-stage
+
+A module specification revision is required to incorporate approved MLO and
+assessment changes into the authoritative published record. It is
+auto-initiated by the system only once all MLO and assessment workflows for
+that module have reached `APPROVED`. It is an incorporation and sign-off
+step rather than substantive authoring, and must not be manually triggered
+by the convenor.
+
+---
+
+### D8 — Scoping step is required before the scheduler generates milestones
+
+The backwards scheduler must not generate `ScheduledMilestone` records for
+downstream MLO workflows until the coordinator has confirmed scope at the
+impact analysis review step. The sequencing is:
+
+1. CLO approved
+2. LLM impact analysis runs
+3. Coordinator reviews and confirms scope (with override capability in both
+   directions — see D9)
+4. Scheduler generates milestones only for confirmed in-scope modules
+5. Initiation tasks pushed to convenors
+
+This sequencing must be enforced as an explicit workflow state or gate, not
+left implicit.
+
+---
+
+### D9 — Coordinator can override LLM scope recommendations in both directions
+
+The LLM impact analysis output is a starting point for scope confirmation,
+not a gate. The coordinator must be able to:
+
+- **Add** a module the LLM classified as fully covered or did not flag
+- **Remove** a module the LLM flagged as needing changes
+
+Both override directions must be supported in the UI and recorded with
+provenance in the data model (see G2).
+
+---
+
+### D10 — No partial approval at committee
+
+The committee approves or rejects the full submission bundle as a unit.
+Partial approval is not permitted.
+
+Rationale: partial approval removes context from rejected items when they
+are returned for reconsideration. The committee's feedback applies to the
+bundle as a coherent whole.
+
+This constraint must be enforced in the FSM: the approve/reject transition
+on the CLO workflow must be conditional on all dependent workflows in the
+bundle being at `TLC_REVIEW` state. The reject transition propagates back
+to the coordinator rather than to individual document authors.
+
+---
+
+### D11 — Automatic milestone capture for newly-spawned workflows in revision iterations
+
+Any workflow spawned during a revision iteration — for example a new
+assessment workflow triggered by a revised MLO — must be automatically
+attached to the originating `PublicationTarget` as a new `ScheduledMilestone`
+via `MilestonePublicationTarget`. This happens as a FSM side effect without
+coordinator intervention, regardless of which iteration of the bundle the
+spawning occurs in.
+
+---
+
+### D12 — Scheduler recomputes on TLC rejection
+
+When a bundle is rejected by TLC and returned to the coordinator, the
+backwards scheduler must recompute deadlines across all milestones for the
+originating `PublicationTarget`. This recomputation is triggered
+automatically by the rejection transition, not deferred to the next
+dashboard view.
+
+---
+
+### D13 — `COORDINATOR_REVIEW` is a distinct FSM state
+
+The coordinator's pre-committee quality review is a named FSM state
+(`COORDINATOR_REVIEW`), distinct from `SUBMITTED` and `TLC_REVIEW`. This
+matters for pipeline visualisation, task pool assignment, and LLM trigger
+points (see D14). The coordinator and TLC members are different role pools.
+
+---
+
+### D14 — Brief adequacy LLM check fires on entry to `COORDINATOR_REVIEW`
+
+The LLM brief adequacy check (workflow 8 in `llm_workflows.md`) fires when
+a downstream document (e.g. `ModuleOutcomeContent`) enters
+`COORDINATOR_REVIEW` state, not at submission. This ensures the coordinator
+has a ready analysis when they open the task, without running the check on
+documents that are pushed back before the coordinator sees them.
+
+---
+
+## Open Questions
+
+These are unresolved design questions that must be answered before the
+affected components can be fully specified.
+
+---
+
+### G1 — `CourseOutcomeContent` fields not yet specified
+
+`CourseOutcomeContent` is currently a stub in `document_models.md`. Fields
+analogous to `ModuleOutcomeContent` — `course`, `outcome_code`, `text`,
+`descriptor_category`, `ordering`, `is_retired`, `regulatory_documents` —
+need to be specified before the CLO workflow can be implemented.
+
+**Prerequisite for:** D1, D2, D8, D9, and the entire workflow.
+
+---
+
+### G2 — Coordinator scoping decision provenance not modelled
+
+There is no model currently capturing the per-module scoping decision made
+at the impact analysis review step. The audit trail must record not just
+which modules are in scope but why — LLM recommendation accepted, coordinator
+override added, LLM recommendation rejected.
+
+Candidate location: additional fields on `ScheduledMilestone`:
+- `scope_origin` — `TextChoices`: `llm_recommended`, `coordinator_added`,
+  `llm_recommended_excluded`
+- `scope_note` — nullable `TextField`
+
+Alternatively these fields could live on the `LLMResult` row if that model
+is restructured per G3.
+
+**Prerequisite for:** D8, D9.
+
+---
+
+### G3 — `LLMResult` structure insufficient for impact analysis
+
+`LLMResult` is currently a generic advisory output type. The impact analysis
+use case requires a structured, row-level format — one record per module —
+where each row carries the LLM's coverage classification, explanatory text,
+and a coordinator override state (accepted, rejected, overridden).
+
+A generic `LLMResult` with a blob output JSON is likely insufficient. The
+impact analysis may warrant its own result sub-type or structured sub-model.
+
+**Prerequisite for:** D8, D9, G2.
+
+---
+
+### G4 — `AgendaItem` model not specified
+
+The `CommitteeMeeting` model exists as a scheduling input but there is no
+specified model for attaching documents to a meeting agenda. An `AgendaItem`
+model is needed that links a `Document` (or `WorkflowInstance`) to a
+`CommitteeMeeting`, carries agenda order, and records the meeting outcome
+against that item.
+
+**Prerequisite for:** G5, committee stage implementation.
+
+---
+
+### G5 — Explicit submission bundle object not modelled
+
+The submission bundle presented to TLC is currently implicit — it is the
+set of `ScheduledMilestone` instances under a `PublicationTarget` that have
+reached `TLC_REVIEW`. This may be insufficient.
+
+The committee rejection record, `AgendaItem` (G4), and the coordinator's
+return workflow all need an explicit object to reference. A bundle model
+would also give submissions a stable identity across multiple TLC cycles,
+making it possible to query the full revision history of a submission.
+
+**Depends on:** G4.
+**Prerequisite for:** D10, D12, committee stage implementation.
+
+---
+
+### G6 — Structured vs narrative content in `ModuleSpecificationContent`
+
+`ModuleSpecificationContent` bundles two separable concerns:
+
+- **Structured fields** — credit points, level, delivery mode, period,
+  component references. Largely derived from approved component documents.
+- **Freeform narrative** — module description and outline, requiring genuine
+  editorial judgement and potentially impacted by MLO and assessment changes
+  independently of any structured field change.
+
+These may warrant independent amendment pathways. A convenor should be able
+to revise narrative text without initiating a full module spec workflow. The
+auto-triggered incorporation revision (D7) should not conflate structured
+field updates with narrative authoring.
+
+**Requires:** input from curriculum team on what committees need to see and
+approve at each stage.
+
+---
+
+*Document status: draft — captured from CLO workflow walkthrough session.*
+*Approval and publication stages are out of scope and not covered here.*
