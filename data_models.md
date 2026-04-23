@@ -32,13 +32,13 @@ multiple roles within a single tenant (e.g. it's possible to have
 `convenor`, `reviewer`, and possibly a combination of  `*_tlc` or
 `*_tlc_chair` roles).
 
-| Field       | Type         | Notes                                                                                                                                                                                                                                                                                                                                 |
-|-------------|--------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`        | PK           |                                                                                                                                                                                                                                                                                                                                       |
-| `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                                    |
-| `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                                       |
+| Field       | Type         | Notes                                                                                                                                                                                                                                                                                                                              |
+|-------------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`        | PK           |                                                                                                                                                                                                                                                                                                                                    |
+| `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                                 |
+| `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                                    |
 | `role`      | CharField    | `TextChoices`: `convenor`, `reviewer`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `course_coordinator` |
-| `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                                       |
+| `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                                    |
 
 **Constraints:** `unique_together = (user, role, tenant)`
 
@@ -282,21 +282,69 @@ RegulatoryDocument.objects.filter(
 
 ---
 
+### `AwardType`
+
+Global registry of award types with their credit requirements. Not
+tenant-scoped — values are framework-level constants shared across all
+tenants, populated by fixture at deployment and updated only when the
+Sussex Academic Framework is revised. `CourseIdentifier` carries a FK
+to this table.
+
+| Field                  | Type                            | Notes                                                                             |
+|------------------------|---------------------------------|-----------------------------------------------------------------------------------|
+| `id`                   | PK                              |                                                                                   |
+| `code`                 | CharField unique                | Stable identifier, e.g. `bsc_hons`, `msc`, `pgdip`                                |
+| `name`                 | CharField unique                | e.g. `Bachelor's Degree with Honours`                                             |
+| `abbreviation`         | CharField                       | e.g. `BA`, `BSc`, `MEng`                                                          |
+| `fheq_level`           | FK → FHEQLevel                  | Level of the award exit point                                                     |
+| `min_credits`          | PositiveIntegerField            | Total credits required for the award                                              |
+| `min_credits_at_level` | PositiveIntegerField (nullable) | Minimum credits that must be at the award's FHEQ level. NULL for research degrees |
+| `has_component_rules`  | BooleanField                    | True if per-component credit rules apply (e.g. major/minor, joint degrees)        |
+
+**Note:** `AwardType` is not tenant-scoped. No `TenantScopedManager` is
+needed. Records are managed by deployment fixture, not by tenant
+administrators.
+
+**Note on component rules:** where `has_component_rules` is True, the
+per-component credit minima (e.g. major ≥ 60 credits at Level 6, minor
+≥ 30 credits at Level 6) are held in a related `AwardTypeComponentRule`
+table. That model is **deferred** — stub only, pending implementation of
+degree structure validation.
+
+**Fixture values (Schedule 1):**
+
+| code                   | name                                         | abbrev               | FHEQ | min_credits | min_at_level | component_rules |
+|------------------------|----------------------------------------------|----------------------|------|-------------|--------------|-----------------|
+| `bsc_hons`             | Bachelor's Degree with Honours               | BA/BSc/BEng etc.     | 6    | 360         | 90           | False           |
+| `bsc_hons_major_minor` | Bachelor's Degree with Honours (Major/Minor) | BA/BSc etc.          | 6    | 360         | 60+30        | True            |
+| `bsc_hons_joint`       | Bachelor's Degree with Honours (Joint)       | BA/BSc etc.          | 6    | 360         | 90           | True            |
+| `meng`                 | Integrated Master's Degree                   | MEng/MChem etc.      | 7    | 480         | 120          | False           |
+| `msc`                  | Master's Degree                              | MA/MSc/MBA/LLM etc.  | 7    | 180         | 150          | False           |
+| `mres`                 | Master of Research                           | MRes                 | 7    | 180         | 150          | False           |
+| `msc_by_research`      | Master's Degree by Research                  | LLM by Research etc. | 7    | 180         | 180          | False           |
+| `pgdip`                | Postgraduate Diploma                         | PgDip                | 7    | 120         | 90           | False           |
+| `pgcert`               | Postgraduate Certificate                     | PgCert               | 7    | 60          | 45           | False           |
+| `grad_dip`             | Graduate Diploma                             | GradDip              | 6    | 120         | 120          | False           |
+| `grad_cert`            | Graduate Certificate                         | GradCert             | 6    | 60          | 60           | False           |
+
+---
+
 ### `CourseIdentifier`
 
-| Field                              | Type                      | Notes                                                                                                                                                                                                                               |
-|------------------------------------|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                               | PK                        |                                                                                                                                                                                                                                     |
-| `tenant`                           | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()`                                                                                                                                                                              |
-| `department`                       | FK → DepartmentIdentifier |                                                                                                                                                                                                                                     | 
-| `code`                             | CharField                 | unique code, matches institutional code, e.g. F3058U                                                                                                                                                                                |
-| `name`                             | CharField                 | course name                                                                                                                                                                                                                      |
-| `type`                             | CharField                 | `TextChoices`:'UG', 'PGT', 'PGR'                                                                                                                                                                                                    |
-| `moa`                              | CharField                 | `TextChoices`: 'FT', 'PT', 'Mixed'                                                                                                                                                                                                  |
-| `last_published_at`                | DateTimeField (nullable)  | Most recent publication of any governed document in this course's scope, including module-level events for modules belonging to this course                                                                                   |
-| `last_published_document_type`     | CharField (nullable)      | `Document.DocumentType` value of that event                                                                                                                                                                                         |
-| `has_in_flight_workflow`           | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below.       |
-| `course_spec_last_published_at` | DateTimeField (nullable)  | Set only when `CourseSpecificationContent` publishes. Never updated by module-level events. Allows course coordinators to distinguish "something in the course changed" from "the course specification itself changed." |
+| Field                           | Type                      | Notes                                                                                                                                                                                                                         |
+|---------------------------------|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                            | PK                        |                                                                                                                                                                                                                               |
+| `tenant`                        | FK → Tenant               | Must equal `department.tenant` — enforced in `clean()`                                                                                                                                                                        |
+| `department`                    | FK → DepartmentIdentifier | `related_name='courses'`                                                                                                                                                                                                      | 
+| `code`                          | CharField                 | unique code, matches institutional code, e.g. F3058U                                                                                                                                                                          |
+| `name`                          | CharField                 | course name                                                                                                                                                                                                                   |
+| `moa`                           | CharField                 | `TextChoices`: 'FT', 'PT', 'Mixed'                                                                                                                                                                                            |
+| `degree_structure`              | CharField                 | `TextChoices`: `single_honours`, `joint_honours`, `major_minor`                                                                                                                                                               |
+| `award_type`                    | FK → AwardType            | `related_name='courses'`                                                                                                                                                                                                      |                                                                                                                                                                                                     
+| `last_published_at`             | DateTimeField (nullable)  | Most recent publication of any governed document in this course's scope, including module-level events for modules belonging to this course                                                                                   |
+| `last_published_document_type`  | CharField (nullable)      | `Document.DocumentType` value of that event                                                                                                                                                                                   |
+| `has_in_flight_workflow`        | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below. |
+| `course_spec_last_published_at` | DateTimeField (nullable)  | Set only when `CourseSpecificationContent` publishes. Never updated by module-level events. Allows course coordinators to distinguish "something in the course changed" from "the course specification itself changed."       |
 
 **Constraints:** `unique_together = (code, tenant)`
 
@@ -349,12 +397,13 @@ concurrency rules.
 | `code`                         | CharField                 | unique code, matches institutional code, e.g. F3202                                                                                                                                                                           |
 | `name`                         | CharField                 | module name (mutable)                                                                                                                                                                                                         |
 | `level`                        | FK → FHEQLevel            | FHEQ level descriptor                                                                                                                                                                                                         |
-| `module_type`                  | CharField                 | `TextChoices`: `course`, `dissertation`, `project`, `placement`. Vocabulary provisional — to be confirmed with stakeholders                                                                                                   |
+| `is_elective`                  | BooleanField              | Elective is a property of the module. Elective modules go in protected timetabling periods. Core vs Option is a property of the `CourseModuleMembership`.                                                                     |
 | `last_published_at`            | DateTimeField (nullable)  | Timestamp of the most recent publication of any governed document anchored to this module                                                                                                                                     |
 | `last_published_document_type` | CharField (nullable)      | `Document.DocumentType` value of that publication event                                                                                                                                                                       |
 | `has_in_flight_workflow`       | BooleanField              | True if any governed document anchored to this identifier has an open workflow. Default `False`. Maintained by `on_workflow_opened` and `on_workflow_closed` — not by `on_document_published`. See implementation note below. |
 
-**Constraints:** `unique_together = (code, tenant)`
+**Constraints:** `unique_together = (code, tenant)`. Elective modules with `is_elective` set to `True`
+must have `credit_points == 15`, enforced by `ModuleSpecificationContent.clean()`.
 
 **Managers:** `objects = TenantScopedManager()`,
 `all_tenants = TenantScopedManager(require_tenant=False)`
@@ -381,12 +430,14 @@ queries ("all modules on this course") and for course-level
 denormalised field propagation (`last_published_at` on
 `CourseIdentifier`).
 
-| Field       | Type                     | Notes                                                                          |
-|-------------|--------------------------|--------------------------------------------------------------------------------|
-| `id`        | PK                       |                                                                                |
-| `tenant`    | FK → Tenant              | Must equal both `course.tenant` and `module.tenant` — enforced in `clean()` |
-| `course` | FK → CourseIdentifier | `related_name='module_memberships'`                                            |
-| `module`    | FK → ModuleIdentifier    | `related_name='course_memberships'`                                         |
+| Field       | Type                  | Notes                                                                                                                                                                                                                                                                                                                                    |
+|-------------|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`        | PK                    |                                                                                                                                                                                                                                                                                                                                          |
+| `tenant`    | FK → Tenant           | Must equal both `course.tenant` and `module.tenant` — enforced in `clean()`                                                                                                                                                                                                                                                              |
+| `course`    | FK → CourseIdentifier | `related_name='module_memberships'`                                                                                                                                                                                                                                                                                                      |
+| `module`    | FK → ModuleIdentifier | `related_name='course_memberships'`                                                                                                                                                                                                                                                                                                      |
+| `stage`     | CharField             | `TextChoices`: `foundation`, `certificate`, `diploma`, `honours`. Stage of study. Note this is distinct from FHEQ level; a language module at a lower FHEQ may still be taught in stage 2. Note there is a well-defined canonical ordering `foundation` < `certificate` < `diploma` < `honours`. Does not apply to postgraduate courses. |
+| `component` | CharField             | `TextChoices`: `core`, `option`, `major`, `minor`. Role of this module within the course.                                                                                                                                                                                                                                                |                                                                                             
 
 **Constraints:** `unique_together = (course, module)`
 
@@ -416,14 +467,15 @@ a module is established. Retired rather than deleted when an assessment
 is removed, so that historical assessment documents retain a valid
 reference.
 
-| Field             | Type                  | Notes                                                  |
-|-------------------|-----------------------|--------------------------------------------------------|
-| `id`              | PK                    |                                                        |
-| `tenant`          | FK → Tenant           | Must equal `module.tenant` — enforced in `clean()`     |
-| `module`          | FK → ModuleIdentifier | `related_name='assessment_slots'`                      |
-| `assessment_type` | CharField             | `exam`, `cwk`, `prb` — controlled vocabulary, see note |
-| `sequence`        | PositiveIntegerField  | Position within type for this module, e.g. `1`, `2`    |
-| `retired_at`      | DateField (nullable)  | NULL = active; set when slot is retired                |
+| Field             | Type                  | Notes                                                                                                                  |
+|-------------------|-----------------------|------------------------------------------------------------------------------------------------------------------------|
+| `id`              | PK                    |                                                                                                                        |
+| `tenant`          | FK → Tenant           | Must equal `module.tenant` — enforced in `clean()`                                                                     |
+| `module`          | FK → ModuleIdentifier | `related_name='assessment_slots'`                                                                                      |
+| `assessment_type` | CharField             | `exam`, `cwk`, `prb` — controlled vocabulary, see note                                                                 |
+| `sequence`        | PositiveIntegerField  | Position within type for this module, e.g. `1`, `2`                                                                    |
+| `is_examination`  | BooleanField          | `True` if the assessment is delivered in an examination room under invigilation (academic framework §12.5 distinction) |
+| `retired_at`      | DateField (nullable)  | NULL = active; set when slot is retired                                                                                |
 
 **Constraints:** `unique_together = (module, assessment_type, sequence)`
 
@@ -453,6 +505,134 @@ ModuleIdentifier.assessment_slots.filter(retired_at__isnull=True)
 not a free CharField, to prevent inconsistent codes across modules. The
 controlled vocabulary (`exam`, `cwk`, `prb`, etc.) is defined at the
 application level and does not require a database table.
+
+---
+
+### `PathwayIdentifier`
+
+A validated, academically coherent combination of modules that students
+may select on arrival. Pathways are approved curriculum objects — not
+informal groupings. Append-only: a pathway is closed by setting
+`valid_to` rather than deleting the record.
+
+Elective modules (`is_elective=True`) may appear as pathway members via
+`PathwayModuleMembership`. This is the only join table through which
+electives are associated with a course-level structure; electives do not
+appear in `CourseModuleMembership`.
+
+| Field           | Type                      | Notes                                              |
+|-----------------|---------------------------|----------------------------------------------------|
+| `id`            | PK                        |                                                    |
+| `tenant`        | FK → Tenant               | Must equal `course.tenant` — enforced in `clean()` |
+| `course`        | FK → CourseIdentifier     | `related_name='pathways'`                          |
+| `name`          | CharField                 | e.g. `Language Pathway (French)`                   |
+| `credit_volume` | PositiveSmallIntegerField | Typically 60 or 90                                 |
+| `valid_from`    | DateField                 |                                                    |
+| `valid_to`      | DateField (nullable)      | NULL = currently approved                          |
+
+**Constraints:** `unique_together = (course, name)`
+
+**Managers:** `objects = TenantScopedManager()`,
+`all_tenants = TenantScopedManager(require_tenant=False)`
+
+**Integrity note:** `tenant` must equal `course.tenant` — enforced in
+`clean()`.
+
+**Current pathways query:**
+
+```python
+PathwayIdentifier.objects.for_tenant(tenant).filter(
+    course=course,
+    valid_to__isnull=True,
+)
+```
+
+---
+
+### `PathwayModuleMembership`
+
+Join table expressing which modules constitute a pathway. A module may
+appear in multiple pathways. Elective modules (`is_elective=True`) are
+permitted members; non-elective modules are also permitted where the
+pathway is composed of core or option modules.
+
+| Field     | Type                   | Notes                                                |
+|-----------|------------------------|------------------------------------------------------|
+| `id`      | PK                     |                                                      |
+| `tenant`  | FK → Tenant            | Must equal both `pathway.tenant` and `module.tenant` |
+| `pathway` | FK → PathwayIdentifier | `related_name='module_memberships'`                  |
+| `module`  | FK → ModuleIdentifier  | `related_name='pathway_memberships'`                 |
+
+**Constraints:** `unique_together = (pathway, module)`
+
+**Managers:** `objects = TenantScopedManager()`,
+`all_tenants = TenantScopedManager(require_tenant=False)`
+
+**Integrity note:** `tenant` must equal `pathway.tenant` and
+`module.tenant` — enforced in `clean()`.
+
+---
+
+### `FacultyAssessmentLoadPolicy`
+
+Stores faculty-level assessment load equivalency bands, keyed by FHEQ
+level and credit value. Defines the expected range of notional hours
+attributable to assessment for a module of a given credit value at a
+given level, consistent with the 1 credit = 10 notional learning hours
+convention. Also carries the cohort-level weekly threshold used by the
+deadline congestion checker.
+
+One policy record per (faculty, fheq_level, credit_value) combination.
+Records are managed by faculty administrators, not by deployment fixture,
+since norms vary by faculty.
+
+| Field                    | Type                      | Notes                                                                                       |
+|--------------------------|---------------------------|---------------------------------------------------------------------------------------------|
+| `id`                     | PK                        |                                                                                             |
+| `tenant`                 | FK → Tenant               | Must equal `faculty.tenant` — enforced in `clean()`                                         |
+| `faculty`                | FK → FacultyIdentifier    | `related_name='assessment_load_policies'`                                                   |
+| `fheq_level`             | FK → FHEQLevel            |                                                                                             |
+| `credit_value`           | PositiveSmallIntegerField | e.g. `15`, `30`                                                                             |
+| `min_assessment_hours`   | PositiveSmallIntegerField | Lower bound of expected assessment effort in notional hours                                 |
+| `max_assessment_hours`   | PositiveSmallIntegerField | Upper bound of expected assessment effort in notional hours                                 |
+| `weekly_hours_threshold` | PositiveSmallIntegerField | Maximum acceptable cohort assessment hours in any single week before congestion flag raised |
+| `terminal_exam_hours`    | PositiveSmallIntegerField | Assumed notional hours for any terminal examination (revision + sitting). Default `30`      |
+
+**Constraints:** `unique_together = (faculty, fheq_level, credit_value)`
+
+**Managers:** `objects = TenantScopedManager()`,
+`all_tenants = TenantScopedManager(require_tenant=False)`
+
+**Integrity note:** `tenant` must equal `faculty.tenant` — enforced in
+`clean()`.
+
+**Load check query:**
+
+```python
+# Retrieve the applicable policy for a given module
+policy = FacultyAssessmentLoadPolicy.objects.get(
+    faculty=module.department.faculty,
+    fheq_level=module.level,
+    credit_value=module_spec.credit_points,
+)
+
+# Sum estimated assessment hours across active slots
+from django.db.models import Sum
+
+total = AssessmentContent.objects.filter(
+    module=module,
+    slot__retired_at__isnull=True,
+).aggregate(total=Sum('estimated_hours'))['total'] or 0
+
+# Flag if outside band
+if total < policy.min_assessment_hours or total > policy.max_assessment_hours:
+# raise validation warning
+```
+
+**Note:** `estimated_hours` on `AssessmentContent` is nullable. The load
+check should degrade gracefully when not all assessments have been
+annotated — flagging incomplete data rather than treating missing values
+as zero.
 
 ---
 
@@ -503,14 +683,14 @@ tenant-scoped. Course-level accreditation is expressed via
 
 ### `CourseConvenorScope`
 
-| Field        | Type                     | Notes                   |
-|--------------|--------------------------|-------------------------|
-| `id`         | PK                       |                         |
-| `tenant`     | FK → Tenant              |
-| `course`  | FK → CourseIdentifier |                         |
-| `user`       | FK → User                |                         |
-| `valid_from` | DateField                |                         |
-| `valid_to`   | DateField (nullable)     | NULL = currently active |
+| Field        | Type                  | Notes                   |
+|--------------|-----------------------|-------------------------|
+| `id`         | PK                    |                         |
+| `tenant`     | FK → Tenant           |
+| `course`     | FK → CourseIdentifier |                         |
+| `user`       | FK → User             |                         |
+| `valid_from` | DateField             |                         |
+| `valid_to`   | DateField (nullable)  | NULL = currently active |
 
 **Constraints:**
 
@@ -575,24 +755,24 @@ defined period. Append-only — accreditation is closed by setting
 `RegulatoryDocument` records applicable to this accreditation are
 linked via the M2M.
 
-| Field                  | Type                           | Notes                                                 |
-|------------------------|--------------------------------|-------------------------------------------------------|
-| `id`                   | PK                             |                                                       |
+| Field                  | Type                           | Notes                                              |
+|------------------------|--------------------------------|----------------------------------------------------|
+| `id`                   | PK                             |                                                    |
 | `tenant`               | FK → Tenant                    | Must equal `course.tenant` — enforced in `clean()` |
-| `course`            | FK → CourseIdentifier       |                                                       |
-| `accrediting_body`     | FK → AccreditingBodyIdentifier |                                                       |
-| `valid_from`           | DateField                      |                                                       |
-| `valid_to`             | DateField (nullable)           | NULL = currently accredited                           |
-| `regulatory_documents` | M2M → RegulatoryDocument       | PSRB requirements applicable to this accreditation    |
-| `notes`                | TextField (blank)              |                                                       |
+| `course`               | FK → CourseIdentifier          |                                                    |
+| `accrediting_body`     | FK → AccreditingBodyIdentifier |                                                    |
+| `valid_from`           | DateField                      |                                                    |
+| `valid_to`             | DateField (nullable)           | NULL = currently accredited                        |
+| `regulatory_documents` | M2M → RegulatoryDocument       | PSRB requirements applicable to this accreditation |
+| `notes`                | TextField (blank)              |                                                    |
 
 **Constraints:**
 
 ```python
 UniqueConstraint(
-    fields=['programme', 'accrediting_body'],
+    fields=['course', 'accrediting_body'],
     condition=Q(valid_to__isnull=True),
-    name='unique_active_programme_accreditation',
+    name='unique_active_course_accreditation',
 )
 ```
 
@@ -603,7 +783,7 @@ UniqueConstraint(
 
 ```python
 CourseAccreditationScope.objects.for_tenant(tenant).filter(
-    programme=programme,
+    course=course,
     valid_to__isnull=True,
 )
 ```
@@ -643,16 +823,17 @@ separate table linked by `OneToOneField`.
 
 ### `Document.DocumentType` values
 
-| Value               | Content model                   | Notes                                                               |
-|---------------------|---------------------------------|---------------------------------------------------------------------|
-| `module_spec`       | `ModuleSpecificationContent`    |                                                                     |
-| `programme_spec`    | `CourseSpecificationContent` |                                                                     |
-| `assessment`        | `AssessmentContent`             | Covers all assessment formats (exam, coursework, problem set, etc.) |
-| `learning_outcome`  | `LearningOutcomeContent`        |                                                                     |
-| `teaching_activity` | `TeachingActivityContent`       | Multiple may be approved simultaneously per module                  |
-| `reaccreditation`   | `ReaccreditationContent`        |                                                                     |
-| `module_requisite`  | `ModuleRequisiteContent`        | **Deferred** — governance model TBD with curriculum team            |
-| `curriculum_review` | `CurriculumReviewContent`       | **Deferred** — follows same pattern as `reaccreditation`            |
+| Value               | Content model                | Notes                                                               |
+|---------------------|------------------------------|---------------------------------------------------------------------|
+| `module_spec`       | `ModuleSpecificationContent` |                                                                     |
+| `course_spec`       | `CourseSpecificationContent` |                                                                     |
+| `assessment`        | `AssessmentContent`          | Covers all assessment formats (exam, coursework, problem set, etc.) |
+| `course_outcome`    | `CourseOutcomeContent`       |                                                                     |
+| `module_outcome`    | `ModuleOutcomeContent`       |                                                                     |
+| `teaching_activity` | `TeachingActivityContent`    | Multiple may be approved simultaneously per module                  |
+| `reaccreditation`   | `ReaccreditationContent`     |                                                                     |
+| `module_requisite`  | `ModuleRequisiteContent`     | **Deferred** — governance model TBD with curriculum team            |
+| `curriculum_review` | `CurriculumReviewContent`    | **Deferred** — follows same pattern as `reaccreditation`            |
 
 ---
 
@@ -820,21 +1001,21 @@ caused which version action.
 A desired outcome with a target date. Drives the backwards
 scheduler. All scheduled milestones are grouped under this entity.
 
-| Field                  | Type                                | Notes                                                                                                              |
-|------------------------|-------------------------------------|--------------------------------------------------------------------------------------------------------------------|
-| `id`                   | PK                                  |                                                                                                                    |
-| `tenant`               | FK → Tenant                         |                                                                                                                    |
-| `label`                | CharField                           | e.g. `AY 2029/30 programme review`                                                                                 |
-| `description`          | TextField                           |                                                                                                                    |
-| `target_document_type` | CharField                           | The terminal document type                                                                                         |
-| `target_state`         | CharField                           | The required terminal state                                                                                        |
-| `target_date`          | DateField                           |                                                                                                                    |
-| `owner`                | FK → User                           | Usually the programme coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
-| `programme`            | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified programme. Unanchored targets are allowed.                            |
-| `is_active`            | BooleanField                        |                                                                                                                    |
-| `created_at`           | DateTimeField                       | auto                                                                                                               |
+| Field                  | Type                             | Notes                                                                                                           |
+|------------------------|----------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `id`                   | PK                               |                                                                                                                 |
+| `tenant`               | FK → Tenant                      |                                                                                                                 |
+| `label`                | CharField                        | e.g. `AY 2029/30 course review`                                                                                 |
+| `description`          | TextField                        |                                                                                                                 |
+| `target_document_type` | CharField                        | The terminal document type                                                                                      |
+| `target_state`         | CharField                        | The required terminal state                                                                                     |
+| `target_date`          | DateField                        |                                                                                                                 |
+| `owner`                | FK → User                        | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
+| `course`               | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified course. Unanchored targets are allowed.                            |
+| `is_active`            | BooleanField                     |                                                                                                                 |
+| `created_at`           | DateTimeField                    | auto                                                                                                            |
 
-**Implementation note:** if `programme` is not null, `tenant` must equal `programme.tenant`.
+**Implementation note:** if `course` is not null, `tenant` must equal `course.tenant`.
 Enforced in `clean()`.
 
 ---
@@ -846,7 +1027,7 @@ computed deadline, initiation date, risk status, and linking decision.
 Rebuilt atomically when any scheduling input changes.
 
 A milestone is always anchored to a `PublicationTarget`. That target may
-be a conventional publication cycle (prospectus, programme review) or an
+be a conventional publication cycle (prospectus, course review) or an
 event-driven coordination effort with a real external deadline, such as a
 reaccreditation submission. In both cases the target date drives the
 backwards scheduler. A milestone may be shared across multiple
@@ -1107,7 +1288,7 @@ class Transition:
 ```python
 # workflows/dependencies.py
 DOCUMENT_DEPENDENCIES = {
-    DocumentType.PROGRAMME_SPECIFICATION: [
+    DocumentType.COURSE_SPECIFICATION: [
         Dependency(
             dependent_transition='submit_for_approval',
             requires_type=DocumentType.MODULE_SPECIFICATION,
@@ -1126,8 +1307,8 @@ DOCUMENT_DEPENDENCIES = {
         ),
         Dependency(
             dependent_transition='submit_to_body',
-            requires_type=DocumentType.LEARNING_OUTCOME,
-            requires_state=LearningOutcomeState.APPROVED,
+            requires_type=DocumentType.MODULE_OUTCOME,
+            requires_state=ModuleOutcomeState.APPROVED,
             resolution='all',
             stale_limit=None,  # never auto-initiate — convenor decides
         ),
