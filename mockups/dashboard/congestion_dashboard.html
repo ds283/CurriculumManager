@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CurriculumGov — Assessment Congestion Check</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #ffffff;
+  --bg2:      #f7f8fa;
+  --bg3:      #f0f2f5;
+  --border:   #e2e5ea;
+  --borderL:  #edf0f4;
+  --t1:       #111827;
+  --t2:       #6b7280;
+  --t3:       #9ca3af;
+  --blue:     #185FA5;
+  --blueL:    #E6F1FB;
+  --blueM:    #85B7EB;
+  --green:    #3B6D11;
+  --greenL:   #EAF3DE;
+  --greenM:   #639922;
+  --amber:    #854F0B;
+  --amberL:   #FAEEDA;
+  --amberM:   #FAC775;
+  --red:      #A32D2D;
+  --redL:     #FCEBEB;
+  --redM:     #E47070;
+  --tealL:    #E1F5EE;
+  --teal:     #085041;
+  --tealD:    #0F6E56;
+  --mono:     'Courier New', monospace;
+  --r:        8px;
+  --rsm:      5px;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg3); color: var(--t1); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+.shell { display: flex; flex-direction: column; height: 100vh; max-width: 1300px; margin: 0 auto; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+
+/* TOPBAR */
+.topbar { height: 48px; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+.brand { font-size: 13px; font-weight: 600; color: var(--t1); letter-spacing: -0.02em; }
+.divider { width: 1px; height: 16px; background: var(--border); }
+.ctx { font-size: 12px; color: var(--t2); }
+.spacer { flex: 1; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.av-teal { background: #9FE1CB; color: #085041; }
+.uname { font-size: 12px; color: var(--t2); }
+.role-badge { font-size: 10px; font-weight: 500; border-radius: 10px; padding: 2px 8px; }
+.rb-teal { background: var(--tealL); color: var(--tealD); }
+
+/* BODY */
+.body { display: flex; flex: 1; min-height: 0; }
+
+/* SIDEBAR */
+.sidebar { width: 196px; background: var(--bg); border-right: 1px solid var(--border); padding: 10px 0; flex-shrink: 0; overflow-y: auto; }
+.ns { padding: 8px 14px 3px; font-size: 10px; font-weight: 600; color: var(--t3); letter-spacing: 0.07em; text-transform: uppercase; }
+.ni { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; color: var(--t2); cursor: pointer; border-left: 2px solid transparent; }
+.ni:hover { background: var(--bg2); }
+.ni.on-teal { color: var(--tealD); border-left-color: var(--tealD); background: #E1F5EE22; font-weight: 500; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.badge { margin-left: auto; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; }
+.b-amber { background: var(--amberM); color: #633806; }
+.b-red   { background: #F7C1C1; color: #791F1F; }
+
+/* CONTENT */
+.content { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+
+/* PAGE HEADER */
+.ph { display: flex; align-items: flex-start; justify-content: space-between; }
+.ph-left {}
+.ph-title { font-size: 16px; font-weight: 600; color: var(--t1); }
+.ph-sub { font-size: 12px; color: var(--t2); margin-top: 2px; }
+.ph-controls { display: flex; gap: 8px; align-items: center; }
+.ctrl-label { font-size: 11px; color: var(--t2); }
+.ctrl-select { font-size: 12px; border: 1px solid var(--border); border-radius: var(--rsm); padding: 4px 8px; background: var(--bg); color: var(--t1); cursor: pointer; }
+
+/* METRICS */
+.metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.mc { background: var(--bg); border-radius: var(--r); padding: 10px 12px; border: 1px solid var(--border); }
+.mc.mc-warn { border-color: var(--amberM); background: var(--amberL); }
+.mc.mc-bad  { border-color: var(--redM);   background: var(--redL); }
+.mc-label { font-size: 11px; color: var(--t2); margin-bottom: 4px; }
+.mc.mc-warn .mc-label { color: var(--amber); }
+.mc.mc-bad  .mc-label { color: var(--red); }
+.mc-val { font-size: 22px; font-weight: 600; color: var(--t1); line-height: 1; }
+.mc.mc-warn .mc-val { color: var(--amber); }
+.mc.mc-bad  .mc-val { color: var(--red); }
+.mc-sub { font-size: 10px; color: var(--t3); margin-top: 2px; }
+.mc.mc-warn .mc-sub { color: var(--amber); opacity: 0.8; }
+.mc.mc-bad  .mc-sub { color: var(--red); opacity: 0.8; }
+
+/* CARDS */
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.card-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 8px; border-bottom: 1px solid var(--borderL); }
+.card-title { font-size: 12px; font-weight: 600; color: var(--t1); }
+.card-sub { font-size: 11px; color: var(--t2); margin-top: 1px; }
+.card-b { padding: 12px 14px; }
+
+/* PILLS */
+.pill { display: inline-flex; align-items: center; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.p-green  { background: var(--greenL); color: var(--green); }
+.p-blue   { background: var(--blueL);  color: var(--blue);  }
+.p-amber  { background: var(--amberL); color: var(--amber); }
+.p-red    { background: var(--redL);   color: var(--red);   }
+.p-gray   { background: var(--bg2);    color: var(--t2);    }
+
+/* ── HEATMAP GRID ── */
+.heatmap-wrap { overflow-x: auto; }
+.heatmap { width: 100%; border-collapse: collapse; font-size: 11px; }
+.heatmap thead th { font-size: 10px; font-weight: 600; color: var(--t3); text-align: center; padding: 0 2px 6px; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.heatmap thead th.mod-hdr { text-align: left; padding-left: 0; min-width: 180px; }
+.heatmap tbody tr { border-bottom: 1px solid var(--borderL); }
+.heatmap tbody tr:last-child { border-bottom: none; }
+.heatmap tbody td { padding: 3px 2px; vertical-align: middle; }
+.heatmap tbody td.mod-cell { padding: 3px 8px 3px 0; }
+.mod-name-wrap { display: flex; flex-direction: column; }
+.mod-code-sm { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--t3); }
+.mod-name-sm { font-size: 11px; color: var(--t1); font-weight: 500; }
+.mod-meta-sm { font-size: 10px; color: var(--t3); }
+
+/* Assessment dot cells */
+.week-cell { text-align: center; width: 68px; min-width: 60px; }
+.dots-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 20px; }
+.adot { display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 9px; font-weight: 700; color: #fff; padding: 1px 5px; white-space: nowrap; cursor: default; position: relative; }
+.adot-cwk   { background: #378ADD; }
+.adot-exam  { background: #7B5EA7; }
+.adot-proj  { background: #2E8B72; }
+.adot-clash { background: #C0392B; outline: 2px solid #E74C3C; }
+.proj-bar { height: 5px; border-radius: 2px; background: #C8EDE4; border: 1px solid #2E8B72; margin: 1px 4px; }
+
+/* clash marker */
+.clash-marker { font-size: 9px; font-weight: 700; color: var(--red); }
+
+/* Week header */
+.week-hdr { font-size: 10px; font-weight: 600; color: var(--t2); text-align: center; }
+.week-hdr.clash-wk { color: var(--red); }
+.week-hrs { font-size: 9px; color: var(--t3); text-align: center; }
+.week-hrs.over { color: var(--red); font-weight: 700; }
+.week-hrs.warn { color: var(--amber); font-weight: 600; }
+
+/* total col */
+.total-cell { text-align: right; padding-left: 8px; white-space: nowrap; font-size: 11px; }
+
+/* ── LOAD CHECK TABLE ── */
+.load-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.load-table thead th { font-size: 10px; font-weight: 600; color: var(--t3); text-align: left; padding: 0 8px 6px; letter-spacing: 0.04em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+.load-table thead th.r { text-align: right; }
+.load-table tbody tr { border-bottom: 1px solid var(--borderL); }
+.load-table tbody tr:last-child { border-bottom: none; }
+.load-table tbody td { padding: 6px 8px; vertical-align: middle; }
+.load-table tbody td.r { text-align: right; }
+.hrs-bar-wrap { display: flex; align-items: center; gap: 6px; }
+.hrs-bar-bg { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; position: relative; overflow: visible; min-width: 80px; }
+.hrs-bar-fill { height: 100%; border-radius: 3px; }
+.hrs-bar-limit { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--t2); border-radius: 1px; }
+.hrs-val { font-size: 11px; font-weight: 600; min-width: 30px; text-align: right; }
+.hrs-val.ok    { color: var(--green); }
+.hrs-val.warn  { color: var(--amber); }
+.hrs-val.over  { color: var(--red); }
+
+/* FLAG ROWS */
+.flag-section { display: flex; flex-direction: column; gap: 6px; }
+.flag { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: var(--rsm); border: 1px solid; border-left-width: 3px; }
+.flag.f-red   { border-color: #F7C1C1; border-left-color: var(--red); background: var(--redL); }
+.flag.f-amber { border-color: var(--amberM); border-left-color: var(--amber); background: var(--amberL); }
+.flag.f-blue  { border-color: var(--blueM); border-left-color: var(--blue); background: var(--blueL); }
+.flag-icon { font-size: 13px; margin-top: 1px; flex-shrink: 0; }
+.flag-title { font-size: 12px; font-weight: 500; color: var(--t1); }
+.flag-sub   { font-size: 11px; color: var(--t2); margin-top: 1px; }
+
+/* LEGEND */
+.legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.leg-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--t2); }
+.leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* TWO COL */
+.two { display: grid; grid-template-columns: 1fr 340px; gap: 12px; }
+
+/* tooltip-ish title */
+[title] { cursor: help; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <span class="brand">CurriculumGov</span>
+    <div class="divider"></div>
+    <span class="ctx">Faculty of Science &amp; Technology</span>
+    <div class="spacer"></div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="avatar av-teal">SC</div>
+      <span class="uname">S. Chapman</span>
+      <span class="role-badge rb-teal">Course Coordinator</span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="ns">Overview</div>
+      <div class="ni"><span class="dot"></span>Dashboard</div>
+      <div class="ni"><span class="dot"></span>My Tasks</div>
+      <div class="ns">Curriculum</div>
+      <div class="ni"><span class="dot"></span>Courses</div>
+      <div class="ni"><span class="dot"></span>Modules</div>
+      <div class="ni"><span class="dot"></span>Pathways</div>
+      <div class="ns">Quality</div>
+      <div class="ni"><span class="dot"></span>Workflows</div>
+      <div class="ni"><span class="dot"></span>Committee Calendar</div>
+      <div class="ni on-teal"><span class="dot" style="background:var(--tealD)"></span>Congestion Check <span class="badge b-red">2</span></div>
+      <div class="ni"><span class="dot"></span>Compliance Report</div>
+      <div class="ns">Registry</div>
+      <div class="ni"><span class="dot"></span>Award Types</div>
+      <div class="ni"><span class="dot"></span>Periods</div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- PAGE HEADER -->
+      <div class="ph">
+        <div class="ph-left">
+          <div class="ph-title">Assessment Congestion Check</div>
+          <div class="ph-sub">Deadline distribution and assessment load validation across the cohort</div>
+        </div>
+        <div class="ph-controls" style="gap:12px;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span class="ctrl-label">Period</span>
+            <select class="ctrl-select">
+              <option selected>Semester 2 2026</option>
+              <option>Semester 1 2026</option>
+              <option>Semester 2 2025</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span class="ctrl-label">Stage</span>
+            <select class="ctrl-select">
+              <option>All stages</option>
+              <option>Stage 1</option>
+              <option selected>Stage 2</option>
+              <option>Stage 3</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span class="ctrl-label">Course</span>
+            <select class="ctrl-select">
+              <option selected>All courses</option>
+              <option>BEng Mechanical Engineering</option>
+              <option>BEng Aerospace Engineering</option>
+              <option>MEng Mechanical Engineering</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- METRICS -->
+      <div class="metrics">
+        <div class="mc">
+          <div class="mc-label">Modules in scope</div>
+          <div class="mc-val">8</div>
+          <div class="mc-sub">Stage 2 · Sem 2 2026</div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Total assessments</div>
+          <div class="mc-val">31</div>
+          <div class="mc-sub">Across 11 weeks</div>
+        </div>
+        <div class="mc mc-bad">
+          <div class="mc-label">Deadline collisions</div>
+          <div class="mc-val">2</div>
+          <div class="mc-sub">Weeks 5 and 9 — action needed</div>
+        </div>
+        <div class="mc mc-warn">
+          <div class="mc-label">Load violations</div>
+          <div class="mc-val">1</div>
+          <div class="mc-sub">ENG2041 exceeds faculty band</div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Faculty hour band</div>
+          <div class="mc-val">30–45</div>
+          <div class="mc-sub">hrs · 15cr · Level 5</div>
+        </div>
+      </div>
+
+      <!-- HEATMAP -->
+      <div class="card">
+        <div class="card-h">
+          <div>
+            <div class="card-title">Deadline distribution — Semester 2 2026 · Stage 2 · All courses</div>
+            <div class="card-sub">Each cell shows assessments due in that week. Red outline = collision (≥3 assessments same week across cohort). Row hours = total notional assessment hours for module.</div>
+          </div>
+          <div class="legend">
+            <div class="leg-item"><div class="leg-dot" style="background:#378ADD"></div>Coursework</div>
+            <div class="leg-item"><div class="leg-dot" style="background:#7B5EA7"></div>Exam</div>
+            <div class="leg-item"><div class="leg-dot" style="background:#2E8B72"></div>Project</div>
+            <div class="leg-item"><div class="leg-dot" style="background:#C0392B;outline:2px solid #E74C3C;outline-offset:1px"></div>Collision</div>
+          </div>
+        </div>
+        <div class="card-b" style="padding:10px 14px 14px;">
+          <div class="heatmap-wrap">
+            <table class="heatmap">
+              <thead>
+                <tr>
+                  <th class="mod-hdr">Module</th>
+                  <!-- week headers -->
+                  <th>
+                    <div class="week-hdr">Wk 1</div>
+                    <div class="week-hrs">0 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 2</div>
+                    <div class="week-hrs">8 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 3</div>
+                    <div class="week-hrs">10 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 4</div>
+                    <div class="week-hrs">10 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr clash-wk">Wk 5 ⚠</div>
+                    <div class="week-hrs over">38 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 6</div>
+                    <div class="week-hrs">8 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 7</div>
+                    <div class="week-hrs">12 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 8</div>
+                    <div class="week-hrs warn">22 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr clash-wk">Wk 9 ⚠</div>
+                    <div class="week-hrs over">35 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 10</div>
+                    <div class="week-hrs">10 hrs</div>
+                  </th>
+                  <th>
+                    <div class="week-hdr">Wk 11</div>
+                    <div class="week-hrs">30 hrs</div>
+                  </th>
+                  <th style="text-align:right;padding-left:8px;font-size:10px;font-weight:600;color:var(--t3);letter-spacing:0.04em;text-transform:uppercase;">Mod hrs</th>
+                </tr>
+              </thead>
+              <tbody>
+
+                <!-- ENG2011 Thermodynamics 15cr L5 -->
+                <tr>
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm">ENG2011</span>
+                      <span class="mod-name-sm">Thermodynamics</span>
+                      <span class="mod-meta-sm">15cr · Level 5</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Lab report — 8hrs">LR</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Problem set — 10hrs">PS</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-green">48 hrs</span></td>
+                </tr>
+
+                <!-- ENG2021 Fluid Mechanics 15cr L5 -->
+                <tr>
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm">ENG2021</span>
+                      <span class="mod-name-sm">Fluid Mechanics</span>
+                      <span class="mod-meta-sm">15cr · Level 5</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Design exercise — 10hrs">DE</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Lab report — 8hrs">LR</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Problem set — 5hrs">PS</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-green">53 hrs</span></td>
+                </tr>
+
+                <!-- ENG2031 Structural Analysis 15cr L5 -->
+                <tr>
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm">ENG2031</span>
+                      <span class="mod-name-sm">Structural Analysis</span>
+                      <span class="mod-meta-sm">15cr · Level 5</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Essay — 10hrs">ES</span></div></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-clash" title="Lab report — 10hrs — COLLISION">LR ⚑</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Problem set — 8hrs">PS</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-green">58 hrs</span></td>
+                </tr>
+
+                <!-- ENG2041 Materials Science 15cr L5 — LOAD VIOLATION -->
+                <tr style="background:#FFF8F8;">
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm" style="color:var(--red)">ENG2041</span>
+                      <span class="mod-name-sm">Materials Science</span>
+                      <span class="mod-meta-sm" style="color:var(--red)">15cr · Level 5 · ⚠ load exceeded</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-clash" title="Lab report — 18hrs — COLLISION">LR ⚑</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Case study — 12hrs">CS</span></div></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Portfolio — 14hrs">PF</span></div></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-clash" title="Design report — 20hrs — COLLISION">DR ⚑</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-red">94 hrs</span></td>
+                </tr>
+
+                <!-- ENG2051 Control Systems 15cr L5 -->
+                <tr>
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm">ENG2051</span>
+                      <span class="mod-name-sm">Control Systems</span>
+                      <span class="mod-meta-sm">15cr · Level 5</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Problem set — 10hrs">PS</span></div></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Lab report — 10hrs">LR</span></div></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-green">50 hrs</span></td>
+                </tr>
+
+                <!-- ENG2061 Manufacturing Processes 15cr L5 -->
+                <tr>
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm">ENG2061</span>
+                      <span class="mod-name-sm">Manufacturing Processes</span>
+                      <span class="mod-meta-sm">15cr · Level 5</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Technical report — 12hrs">TR</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-green">42 hrs</span></td>
+                </tr>
+
+                <!-- ENG2071 Engineering Mathematics 15cr L5 -->
+                <tr>
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm">ENG2071</span>
+                      <span class="mod-name-sm">Engineering Mathematics</span>
+                      <span class="mod-meta-sm">15cr · Level 5</span>
+                    </div>
+                  </td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Problem sheet — 10hrs">P1</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-cwk" title="Problem sheet — 10hrs">P2</span></div></td>
+                  <td class="week-cell"></td>
+                  <td class="week-cell"><div class="dots-wrap"><span class="adot adot-exam" title="Terminal exam — 30hrs">EX</span></div></td>
+                  <td class="total-cell"><span class="pill p-green">50 hrs</span></td>
+                </tr>
+
+                <!-- ENG2081 Final Year Project 30cr L5 -->
+                <tr style="background:#F4FCF9;">
+                  <td class="mod-cell">
+                    <div class="mod-name-wrap">
+                      <span class="mod-code-sm" style="color:var(--tealD)">ENG2081</span>
+                      <span class="mod-name-sm">Final Year Project</span>
+                      <span class="mod-meta-sm" style="color:var(--tealD)">30cr · Level 5 · 10 hrs/wk continuous</span>
+                    </div>
+                  </td>
+                  <!-- project bar shown across all weeks -->
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell"><div class="proj-bar" title="Project work — 10hrs"></div></td>
+                  <td class="week-cell" style="position:relative;">
+                    <div class="proj-bar" title="Project work — 10hrs"></div>
+                    <div class="dots-wrap" style="margin-top:2px;"><span class="adot adot-proj" title="Final report submission — included in 110hrs total">FR</span></div>
+                  </td>
+                  <td class="total-cell"><span class="pill p-blue">110 hrs</span></td>
+                </tr>
+
+              </tbody>
+
+              <!-- COLUMN TOTALS ROW -->
+              <tfoot>
+                <tr style="border-top: 2px solid var(--border);">
+                  <td class="mod-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">Weekly total (excl. project)</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">0</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">8</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">10</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">10</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:700;color:var(--red);padding-top:6px;">38 ⚠</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">8</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">12</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--amber);padding-top:6px;">22</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:700;color:var(--red);padding-top:6px;">35 ⚠</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">10</td>
+                  <td class="week-cell" style="font-size:10px;font-weight:600;color:var(--t3);padding-top:6px;">30*</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td colspan="13" style="font-size:10px;color:var(--t3);padding-top:3px;">* Week 11 shows terminal exam hours only. Threshold: flag weeks where scheduled assessment effort exceeds 25 hrs (faculty policy). Project hours (10 hrs/wk) excluded from weekly collision check but included in module total.</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOWER TWO-COL -->
+      <div class="two">
+
+        <!-- LOAD CHECK TABLE -->
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <div class="card-title">Assessment load check — notional hours vs. faculty band</div>
+              <div class="card-sub">Faculty band: 30–45 hrs per 15 credits at Level 5. Terminal exam assumed 30 hrs (revision + sitting).</div>
+            </div>
+          </div>
+          <div class="card-b" style="padding:10px 14px;">
+            <table class="load-table">
+              <thead>
+                <tr>
+                  <th>Module</th>
+                  <th class="r">Credits</th>
+                  <th class="r">Band (hrs)</th>
+                  <th style="padding-left:16px;">Hours allocated</th>
+                  <th class="r">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">ENG2011</span> Thermodynamics</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:60%;background:var(--greenM)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;" title="Lower bound 30hrs"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;" title="Upper bound 45hrs"></div>
+                      </div>
+                      <span class="hrs-val ok">48</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-green">Within band</span></td>
+                </tr>
+                <tr>
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">ENG2021</span> Fluid Mechanics</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:66%;background:var(--greenM)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;"></div>
+                      </div>
+                      <span class="hrs-val ok">53</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-green">Within band</span></td>
+                </tr>
+                <tr>
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">ENG2031</span> Structural Analysis</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:72%;background:var(--greenM)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;"></div>
+                      </div>
+                      <span class="hrs-val ok">58</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-green">Within band</span></td>
+                </tr>
+                <tr style="background:#FFF8F8;">
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--red)">ENG2041</span> Materials Science</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:100%;background:var(--red)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;background:#fff;"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;background:#fff;"></div>
+                      </div>
+                      <span class="hrs-val over">94</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-red">Exceeded</span></td>
+                </tr>
+                <tr>
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">ENG2051</span> Control Systems</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:62%;background:var(--greenM)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;"></div>
+                      </div>
+                      <span class="hrs-val ok">50</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-green">Within band</span></td>
+                </tr>
+                <tr>
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">ENG2061</span> Manufacturing Processes</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:53%;background:var(--greenM)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;"></div>
+                      </div>
+                      <span class="hrs-val ok">42</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-green">Within band</span></td>
+                </tr>
+                <tr>
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--t2)">ENG2071</span> Engineering Mathematics</td>
+                  <td class="r" style="color:var(--t2)">15</td>
+                  <td class="r" style="color:var(--t2)">30–45</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:62%;background:var(--greenM)"></div>
+                        <div class="hrs-bar-limit" style="left:37.5%;"></div>
+                        <div class="hrs-bar-limit" style="left:56.25%;"></div>
+                      </div>
+                      <span class="hrs-val ok">50</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-green">Within band</span></td>
+                </tr>
+                <tr style="background:#F4FCF9;">
+                  <td><span style="font-family:var(--mono);font-size:10px;color:var(--tealD)">ENG2081</span> Final Year Project</td>
+                  <td class="r" style="color:var(--t2)">30</td>
+                  <td class="r" style="color:var(--t2)">60–90</td>
+                  <td style="padding-left:16px;">
+                    <div class="hrs-bar-wrap">
+                      <div class="hrs-bar-bg">
+                        <div class="hrs-bar-fill" style="width:85%;background:var(--tealD)"></div>
+                        <div class="hrs-bar-limit" style="left:55%;"></div>
+                        <div class="hrs-bar-limit" style="left:82%;"></div>
+                      </div>
+                      <span class="hrs-val" style="color:var(--tealD)">110</span>
+                    </div>
+                  </td>
+                  <td class="r"><span class="pill p-blue">Continuous</span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="font-size:10px;color:var(--t3);margin-top:8px;">Bar markers show faculty band lower and upper bounds. Project module uses scaled band (30cr). Bars scale to 160% of upper bound maximum.</div>
+          </div>
+        </div>
+
+        <!-- FLAGS -->
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card">
+            <div class="card-h"><div class="card-title">Flags requiring attention</div></div>
+            <div class="card-b">
+              <div class="flag-section">
+                <div class="flag f-red">
+                  <span class="flag-icon">⚑</span>
+                  <div>
+                    <div class="flag-title">Week 5 deadline collision — 38 hrs</div>
+                    <div class="flag-sub">ENG2031 lab report and ENG2041 lab report both due Week 5. Combined with ENG2011 problem set: 38 hrs scheduled in one week, exceeding the 25 hr faculty threshold.</div>
+                  </div>
+                </div>
+                <div class="flag f-red">
+                  <span class="flag-icon">⚑</span>
+                  <div>
+                    <div class="flag-title">Week 9 deadline collision — 35 hrs</div>
+                    <div class="flag-sub">ENG2041 design report and ENG2051 problem set coincide. 35 hrs in Week 9 exceeds threshold. ENG2041 already flagged for load violations — this deadline should be moved as part of that remediation.</div>
+                  </div>
+                </div>
+                <div class="flag f-amber">
+                  <span class="flag-icon">⚠</span>
+                  <div>
+                    <div class="flag-title">ENG2041 assessment load exceeded</div>
+                    <div class="flag-sub">94 hrs allocated against a 30–45 hr faculty band for 15 credits at Level 5. Module has 4 coursework components plus terminal exam. Convenor action required before next committee cycle.</div>
+                  </div>
+                </div>
+                <div class="flag f-blue">
+                  <span class="flag-icon">ℹ</span>
+                  <div>
+                    <div class="flag-title">Week 8 approaching threshold — 22 hrs</div>
+                    <div class="flag-sub">ENG2041 portfolio and ENG2031 problem set both due Week 8. Below the 25 hr flag threshold but monitor if further assessments are added.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><div class="card-title">Faculty policy reference</div></div>
+            <div class="card-b" style="display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--borderL);">
+                <span style="color:var(--t2)">Cohort weekly threshold</span>
+                <span style="font-weight:600;">25 hrs</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--borderL);">
+                <span style="color:var(--t2)">15cr Level 5 band</span>
+                <span style="font-weight:600;">30–45 hrs</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--borderL);">
+                <span style="color:var(--t2)">30cr Level 5 band</span>
+                <span style="font-weight:600;">60–90 hrs</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--borderL);">
+                <span style="color:var(--t2)">Terminal exam assumption</span>
+                <span style="font-weight:600;">30 hrs (all modules)</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;">
+                <span style="color:var(--t2)">Project rate</span>
+                <span style="font-weight:600;">10 hrs/wk continuous</span>
+              </div>
+              <div style="margin-top:6px;font-size:10px;color:var(--t3);line-height:1.5;">Policy approved by Faculty Education Committee March 2025. Next review March 2026.</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /two -->
+
+    </div><!-- /content -->
+  </div><!-- /body -->
+</div><!-- /shell -->
+</body>
+</html>
