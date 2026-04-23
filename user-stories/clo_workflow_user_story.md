@@ -25,31 +25,40 @@ programme.
 
 ## Stage 1 — Initiation
 
-The course coordinator decides to introduce a new CLO requiring students to
-demonstrate competence with AI-driven analytical tools. They have three
-options for initiating the workflow:
+**Module convenor — standalone unscheduled.**
+A module convenor may initiate a `ModuleOutcomeContent` or assessment change
+workflow on their own initiative, outside any orchestrated publication cycle.
+No `ScheduledMilestone` is created at this point. The workflow runs as a
+`WorkflowInstance` without scheduling metadata until the course coordinator
+discovers it via `MilestoneOverlap` detection and decides whether to adopt it
+into a `PublicationTarget`.
 
-**Option A — Standalone unscheduled.** The coordinator navigates to the
-course's outcome list and initiates a new CLO workflow directly. The system
-creates a `CourseOutcomeContent` document in `DRAFT` state and opens a
-`WorkflowInstance`. No scheduling target is set at this point.
+**Course coordinator — two valid entry points.**
 
-**Option B — Scheduled, CLO as terminal target.** The coordinator creates a
-`PublicationTarget` with `target_document_type = course_outcome` and a
-target date. The backwards scheduler immediately generates a
-`ScheduledMilestone` for the CLO document (initially with `document = NULL`)
-and computes an initiation deadline working backwards from the target date
-through known committee meeting constraints.
+**Option A — Scheduled, CLO as terminal target.** The coordinator creates a
+`PublicationTarget` with `target_document_type = course_outcome` and a target
+date. The backwards scheduler immediately generates a `ScheduledMilestone` for
+the CLO document (initially with `document = NULL`) and computes an initiation
+deadline working backwards from the target date through known committee meeting
+constraints. Where a firm target date is not yet available, the coordinator may
+create a `PublicationTarget` with `status = PROVISIONAL`; deadlines are
+computed and flagged as provisional until the target date is confirmed.
 
-**Option C — CLO as dependency of a course specification target.** A
+**Option B — CLO as dependency of a course specification target.** A
 `PublicationTarget` already exists for a forthcoming course specification
 publication. The dependency graph declares that CLOs must be approved before
 the course spec can proceed, so the scheduler automatically generates a
 `ScheduledMilestone` for the new CLO under the existing target.
 
-In all cases the coordinator authors the CLO text, enters a
-`change_rationale` on the `Document` envelope explaining the governance
-case, and submits the document to move it forward in its own workflow.
+Standalone unscheduled initiation is not available to course coordinators for
+`CourseOutcomeContent` workflows. All coordinator-initiated CLO changes operate
+under a `PublicationTarget` from the point of initiation, ensuring dependency
+tracking and the Stage 8 bundle gate are in place throughout.
+
+In all coordinator-initiated cases, the coordinator authors the CLO text,
+enters a `change_rationale` on the `Document` envelope explaining the
+governance case, and submits the document to move it forward in its own
+workflow.
 
 ---
 

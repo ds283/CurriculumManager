@@ -14,26 +14,54 @@ without explicitly reconsidering the rationale recorded here.
 
 ---
 
-### D1 — Three entry points for CLO workflow initiation
+### D1 — Entry points for CLO workflow initiation
 
-A coordinator introducing a new `CourseOutcomeContent` document has three
-valid entry points:
+**Module convenor (unscheduled, standalone):**
+A module convenor may initiate a `CourseOutcomeContent`-adjacent workflow —
+specifically a `ModuleOutcomeContent` or assessment change — on their own
+initiative, outside any orchestrated publication cycle. The system creates the
+relevant `Document` in `DRAFT` state and opens a `WorkflowInstance`. No
+`ScheduledMilestone` is involved at initiation.
 
-1. **Standalone unscheduled** — coordinator initiates directly; a `Document`
-   is created in `DRAFT` state and a `WorkflowInstance` is opened. No
-   `ScheduledMilestone` is involved.
-2. **CLO as terminal target** — coordinator creates a `PublicationTarget`
-   with `target_document_type = course_outcome`. The backwards scheduler
-   generates a `ScheduledMilestone` with `document = NULL` until the
-   workflow is initiated, then populates the FK.
-3. **CLO as dependency of a course specification target** — coordinator
-   creates a `PublicationTarget` for the course specification. The
-   dependency graph knows CLOs must be approved before the course spec can
-   proceed, so a `ScheduledMilestone` for the CLO is generated
-   automatically.
+These orphan workflows are surfaced to the course coordinator via
+`MilestoneOverlap` detection. The coordinator may adopt them into a
+`PublicationTarget` by creating a `MilestonePublicationTarget` link, at which
+point the backwards scheduler generates a `ScheduledMilestone` retroactively.
+No scheduling metadata is required before that adoption decision.
 
-Path 3 is the most common governance scenario. Paths 1 and 2 exist for
-cases where a CLO is being introduced outside a full periodic review cycle.
+**Course coordinator — two valid entry points only:**
+
+1. **CLO as terminal target (Path 2)** — the coordinator creates a
+   `PublicationTarget` with `target_document_type = course_outcome` and a
+   target date. The backwards scheduler generates a `ScheduledMilestone` with
+   `document = NULL` until the workflow is initiated, then populates the FK.
+   If a firm target date is not yet known, a `PublicationTarget` with
+   `status = PROVISIONAL` may be created; deadlines are computed but flagged
+   as provisional and revised when the target date is confirmed.
+
+2. **CLO as dependency of a course specification target (Path 3)** — a
+   `PublicationTarget` already exists for a forthcoming course specification
+   publication. The dependency graph declares that CLOs must be approved before
+   the course spec can proceed, so the scheduler automatically generates a
+   `ScheduledMilestone` for the CLO under the existing target.
+
+Standalone unscheduled initiation is **not available to course coordinators**
+for `CourseOutcomeContent` workflows. A coordinator-initiated CLO change always
+operates under a `PublicationTarget`, ensuring dependency tracking, backwards
+scheduling, and the Stage 8 bundle gate are in place from the point of
+initiation.
+
+**Rationale for restricting standalone to convenors:** the Stage 8 FSM
+pre-condition (all dependent workflows must reach `TLC_REVIEW` before the CLO
+can advance) is defined relative to a `PublicationTarget`. A CLO workflow
+without a `PublicationTarget` has no bundle boundary, no enforced dependency
+tracking, and no mechanism to bind downstream MLO and assessment milestones.
+Exploratory coordinator drafting before a target date is known is accommodated
+by the `PROVISIONAL` publication target status rather than a scheduling-free
+path that bypasses the dependency graph.
+
+Path 3 is the most common governance scenario. Path 2 applies when a CLO is
+being introduced outside a full periodic review cycle.
 
 ---
 
@@ -303,3 +331,25 @@ approve at each stage.
 
 *Document status: draft — captured from CLO workflow walkthrough session.*
 *Approval and publication stages are out of scope and not covered here.*
+
+---
+
+### G7 — `PublicationTarget` provisional status not yet modelled
+
+D1 introduces the concept of a `PublicationTarget` with `status = PROVISIONAL`
+to accommodate coordinator-initiated CLO workflows where a firm target date is
+not yet known. This status is not currently modelled on `PublicationTarget`.
+
+The following questions need resolving before it can be implemented:
+
+- Does `status` warrant a `TextChoices` field on `PublicationTarget`, or is
+  provisional state better represented as a nullable `confirmed_date` alongside
+  a required `provisional_date`, with confirmation being an explicit transition?
+- Should the backwards scheduler compute deadlines against a provisional target
+  date, and if so, how are provisional deadlines distinguished from confirmed
+  ones in the UI and in `ScheduledMilestone` records?
+- Is there a workflow action (coordinator confirms the target date) that
+  transitions the `PublicationTarget` out of provisional state, or is it a
+  simple field edit?
+
+**Prerequisite for:** D1 (Path 2 provisional variant).
