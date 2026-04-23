@@ -477,6 +477,82 @@ decision on any rescheduling.
 
 ---
 
+## 8. Coordinator brief adequacy check
+
+### Purpose
+
+When a module convenor submits a proposed MLO (or other downstream
+document) in response to a coordinator-initiated change, the coordinator
+must judge whether the proposed content actually meets the brief they set.
+This check reads the original change context — the CLO, the coordinator's
+rationale, and the task guidance note — and assesses whether the proposed
+content adequately addresses them.
+
+This is distinct from the pre-submission consistency check (workflow 4),
+which is author-facing and checks internal document coherence. This check
+is coordinator-facing and checks adequacy against the originating brief.
+
+### Trigger
+
+Fired when a `ModuleOutcomeContent` (or other coordinator-scoped
+downstream document) enters `COORDINATOR_REVIEW` state. Runs
+asynchronously in the background; the coordinator sees the result when
+they open the review task.
+
+### Inputs
+
+- The proposed MLO text from `ModuleOutcomeContent`
+- The CLO that drove the change, from `CourseOutcomeContent`
+- The `change_rationale` field from the `Document` envelope of the
+  originating CLO workflow
+- The `context_note` from the `Task` record that was pushed to the
+  convenor
+- The FHEQ level from `ModuleIdentifier`, used to assess whether the
+  proposed outcome is pitched at the right level
+
+### What the LLM does
+
+1. **Brief coverage** — does the proposed MLO address the CLO it was
+   spawned to support? Does it cover the full scope of the CLO or only
+   part of it?
+2. **Level appropriateness** — is the proposed outcome pitched at the
+   correct FHEQ level, consistent with the module's level and the
+   coordinator's guidance?
+3. **Guidance adherence** — does the proposed content reflect the
+   specific framing or constraints set out in the coordinator's task
+   note, where one was provided?
+4. **Rationale alignment** — is the proposed change consistent with the
+   stated rationale for the CLO introduction?
+
+Output is a short structured report with a headline verdict
+(`meets_brief`, `partially_meets_brief`, `does_not_meet_brief`) and a
+plain-English explanation for each dimension above.
+
+### Output
+
+An `LLMResult` record of type `brief_adequacy_check` is attached to the
+`ModuleOutcomeContent` document and surfaced in the coordinator's review
+view alongside the document content. The headline verdict and explanation
+are displayed prominently at the top of the review panel.
+
+`partially_meets_brief` and `does_not_meet_brief` verdicts are treated as
+significant flags. The coordinator can proceed and push the document to
+`TLC_REVIEW` despite a flag, but must record a rationale for doing so.
+That rationale is attached to the `WorkflowEvent` for the transition and
+is visible to TLC reviewers.
+
+### What the LLM does not do
+
+- It does not block the coordinator from advancing the workflow
+- It does not assess the MLO against Subject Benchmark Statements or
+  FHEQ descriptors — that is the role of the regulatory alignment
+  pre-check (workflow 5)
+- It does not evaluate whether the MLO is well-written or internally
+  consistent — that is the role of the pre-submission consistency
+  check (workflow 4)
+
+---
+
 ## Cross-cutting implementation notes
 
 ### Human oversight at every stage
