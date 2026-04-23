@@ -14,12 +14,12 @@ programme.
 
 ## Actors
 
-| Actor | Role |
-|---|---|
-| Course coordinator | Initiates the CLO workflow; scopes and oversees downstream work; reviews convenor submissions before committee |
-| Module convenor | Responds to initiation tasks; drafts new or revised MLOs and assessment changes |
-| TLC (Teaching and Learning Committee) | Reviews and approves or rejects the full submission bundle |
-| System | Generates tasks, milestones, LLM analyses, and scheduled deadlines automatically |
+| Actor                                 | Role                                                                                                           |
+|---------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| Course coordinator                    | Initiates the CLO workflow; scopes and oversees downstream work; reviews convenor submissions before committee |
+| Module convenor                       | Responds to initiation tasks; drafts new or revised MLOs and assessment changes                                |
+| TLC (Teaching and Learning Committee) | Reviews and approves or rejects the full submission bundle                                                     |
+| System                                | Generates tasks, milestones, LLM analyses, and scheduled deadlines automatically                               |
 
 ---
 
@@ -235,16 +235,16 @@ committee for a further round.
 The following constraints are load-bearing for this workflow. Future design
 decisions that touch these areas should explicitly consider their impact.
 
-| Constraint | Rationale |
-|---|---|
-| Scope confirmation gates the scheduler | Prevents milestones being generated for modules that don't need work |
-| Coordinator can override LLM scope in both directions | LLM is advisory; coordinator has domain knowledge the model cannot infer |
-| Assessment workflows fire at MLO `SUBMIT`, not `APPROVE` | Enables concurrent processing; reduces end-to-end time |
-| All downstream workflows attach to the originating `PublicationTarget` | Coordinator has a single dashboard view of the full programme of work |
-| No partial approval at committee | Preserves context for rejected items on reconsideration |
-| Hard FSM gate before advancing CLO to `TLC_REVIEW` | Ensures committee always sees a complete, coherent bundle |
-| Scheduler recomputes on TLC rejection | Coordinator sees accurate risk picture immediately on receiving bundle back |
-| New milestones auto-attached in revision iterations | Coordinator dashboard remains complete without manual intervention |
+| Constraint                                                             | Rationale                                                                   |
+|------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| Scope confirmation gates the scheduler                                 | Prevents milestones being generated for modules that don't need work        |
+| Coordinator can override LLM scope in both directions                  | LLM is advisory; coordinator has domain knowledge the model cannot infer    |
+| Assessment workflows fire at MLO `SUBMIT`, not `APPROVE`               | Enables concurrent processing; reduces end-to-end time                      |
+| All downstream workflows attach to the originating `PublicationTarget` | Coordinator has a single dashboard view of the full programme of work       |
+| No partial approval at committee                                       | Preserves context for rejected items on reconsideration                     |
+| Hard FSM gate before advancing CLO to `TLC_REVIEW`                     | Ensures committee always sees a complete, coherent bundle                   |
+| Scheduler recomputes on TLC rejection                                  | Coordinator sees accurate risk picture immediately on receiving bundle back |
+| New milestones auto-attached in revision iterations                    | Coordinator dashboard remains complete without manual intervention          |
 
 ---
 

@@ -227,6 +227,7 @@ which modules are in scope but why — LLM recommendation accepted, coordinator
 override added, LLM recommendation rejected.
 
 Candidate location: additional fields on `ScheduledMilestone`:
+
 - `scope_origin` — `TextChoices`: `llm_recommended`, `coordinator_added`,
   `llm_recommended_excluded`
 - `scope_note` — nullable `TextField`
