@@ -385,4 +385,3 @@ decisions that touch these areas should explicitly consider their impact.
 ---
 
 *Document status: draft — captured from CLO workflow walkthrough session.*
-*Approval and publication stages are out of scope and not covered here.*
