@@ -333,6 +333,165 @@ G5 (bundle object not yet modelled).
 
 ---
 
+### D16 — FSM states distinguish `APPROVED` from `PUBLISHED`
+
+All document workflows in the bundle carry a distinct `APPROVED` state and a
+distinct `PUBLISHED` state. Committee approval and publication are separate FSM
+transitions with separate `WorkflowEvent` audit records. A document at
+`APPROVED` has passed governance; a document at `PUBLISHED` has had an
+`AssetVersion` committed with a `valid_from` date set to
+`PublicationTarget.effective_from`.
+
+This separation allows the approval and publication steps to be performed by
+different actors under different role permissions, and ensures the audit trail
+distinguishes governance sign-off from the operational act of publication.
+
+---
+
+### D17 — Bundle publication is a single atomic Celery task
+
+Publication of a bundle is executed by a Celery task on the `scheduling` queue.
+The task runs a single `transaction.atomic()` block that:
+
+1. Transitions all documents in the bundle from `APPROVED` to `PUBLISHED`
+2. Appends an `AssetVersion` for each document with `valid_from` set to
+   `PublicationTarget.effective_from` and `status = published`
+3. Closes the `valid_to` window on any prior `AssetVersion` for the same
+   `Asset`, setting `valid_to = effective_from`
+4. Calls `on_document_published(document)` for each document, updating the
+   denormalised fields on `ModuleIdentifier` and `CourseIdentifier`
+5. Records a `WorkflowVersionEvent` for each version action
+
+No intermediate state is observable in which a subset of bundle documents are
+published and others are not. Staged publication is not supported for this
+workflow.
+
+**Rationale:** the bundle is approved as a coherent unit (D10). Publishing it
+piecemeal would create a window in which the published curriculum is internally
+inconsistent. Atomicity eliminates that risk.
+
+---
+
+### D18 — `PublicationTarget` carries `effective_from` and `scheduled_task_id`
+
+Two new fields are added to `PublicationTarget`:
+
+- `effective_from` — `DateTimeField (nullable)`. The date and time from which
+  the published documents come into force. Set by a `publication_manager` after
+  all final approvals are confirmed. This value is used as `valid_from` on all
+  `AssetVersion` records created by the publication transaction.
+
+- `scheduled_task_id` — `CharField (nullable, max_length=255)`. The Celery task
+  ID of the pending publication task. Stored so the task can be revoked if
+  `effective_from` is revised before it fires.
+
+Setting or revising `effective_from` is an audited action. It must produce a
+`WorkflowEvent` record on the bundle's CLO `WorkflowInstance`, with
+`actor_role = publication_manager`. It is not a silent field update.
+
+When `effective_from` is set, the system schedules the Celery publication task
+using `apply_async(eta=effective_from)` and stores the returned task ID in
+`scheduled_task_id`. Both the field write and the task scheduling must occur
+within the same `transaction.atomic()` block using Celery's
+`task_always_eager=False` and the `on_commit` hook, so that the task is only
+enqueued if the database transaction commits successfully.
+
+---
+
+### D18a — Publication task validates `effective_from` on entry
+
+The Celery publication task checks on entry that
+`PublicationTarget.effective_from` matches the timestamp it was scheduled with.
+If they differ — indicating the effective date was revised after the task was
+enqueued — the task aborts without making any changes and logs the discrepancy.
+A new task will have been scheduled by the revision action that changed
+`effective_from`.
+
+This guard protects against the edge case where Celery's `revoke()` did not
+reach the worker before the task was picked up (revocation is best-effort when
+a task is already in flight).
+
+---
+
+### D19 — Scheduler data and workflow records are retained on completion
+
+`WorkflowInstance` records are archived on completion by setting an `archived`
+boolean flag. Archived instances are excluded from active task queue queries and
+coordinator dashboards but remain queryable for audit and reporting purposes.
+
+`PublicationTarget`, `ScheduledMilestone`, `WorkflowEvent`, `AssetVersion`, and
+`WorkflowVersionEvent` records are retained permanently. They form the
+historical record used for transition duration estimation (Phase 6), PSRB
+submission evidence, and responses to regulatory audit requests. They must never
+be deleted by application logic.
+
+---
+
+### D20 — Post-TLC-rejection back-transitions are explicit FSM transitions
+
+Downstream document workflows (`ModuleOutcomeContent`, `AssessmentContent`, and
+any other type in the bundle) carry an explicit `TLC_REVIEW → CONVENOR_DRAFT`
+back-transition in their FSM definitions. This transition is not implicit or
+inferred.
+
+The committee's required changes are recorded in `WorkflowEvent.metadata` on
+the bundle-level CLO rejection transition (`TLC_REVIEW → COORDINATOR_REVIEW`).
+When the coordinator returns an individual sub-workflow to a convenor, the
+coordinator authors a `Task.context_note` on the newly generated convenor task.
+This note is the coordinator's own communication: it may incorporate, reframe,
+or expand on the committee feedback at the coordinator's discretion. Committee
+feedback is not forwarded verbatim.
+
+The committee record in `WorkflowEvent` is immutable. The coordinator's note is
+their own authored communication and is distinct from it.
+
+---
+
+### D21 — `publication_manager` is a dedicated role in `TenantMembership`
+
+Publication of an approved bundle is gated solely on the `publication_manager`
+role. This is a new value in the `TenantMembership` role `TextChoices` and is
+granted independently of all other roles.
+
+Individuals holding `publication_manager` will typically also hold
+`chair_of_tlc`, `course_coordinator`, or a faculty administration role, but
+those are separate `TenantMembership` records. The publication FSM transition
+checks solely for `publication_manager` and does not inspect the actor's other
+roles.
+
+When a publication transition is recorded in `WorkflowEvent`, `actor_role` must
+be set to `publication_manager` explicitly by the FSM transition handler. The
+handler must not infer the acting role from the user's full role set.
+
+**Rationale for a dedicated role rather than object-level permissions:** the
+system operates within a single faculty tenant. The granularity of
+`django-guardian` object-level grants — restricting a specific user to a
+specific `PublicationTarget` — is not required at this scope. A role-based
+check is consistent with all other FSM permission gates in the system and keeps
+the permission model in a single location.
+
+---
+
+### D22 — Celery Beat scheduler backed by the application database
+
+The Celery Beat scheduler uses `django-celery-beat`, persisting scheduled task
+entries in the application's PostgreSQL database rather than in Redis or the
+default file-based Beat store.
+
+**Rationale:** setting `effective_from` and enqueuing the corresponding Celery
+task must be atomic — if the database write commits but the task is not
+persisted, the publication will silently never fire. Using the same PostgreSQL
+database for both the `PublicationTarget` record and the scheduled task entry
+allows both writes to occur within a single `transaction.atomic()` block via
+Django's `on_commit` hook. Redis with AOF persistence does not provide this
+transactional guarantee.
+
+The `scheduled_task_id` stored on `PublicationTarget` references the
+`django-celery-beat` periodic task entry, allowing it to be deleted (revoked)
+if `effective_from` is revised before the task fires.
+
+---
+
 ## Open Questions
 
 These are unresolved design questions that must be answered before the
