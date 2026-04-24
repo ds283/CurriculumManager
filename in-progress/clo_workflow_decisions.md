@@ -499,17 +499,6 @@ affected components can be fully specified.
 
 ---
 
-### G1 — `CourseOutcomeContent` fields not yet specified
-
-`CourseOutcomeContent` is currently a stub in `document_models.md`. Fields
-analogous to `ModuleOutcomeContent` — `course`, `outcome_code`, `text`,
-`descriptor_category`, `ordering`, `is_retired`, `regulatory_documents` —
-need to be specified before the CLO workflow can be implemented.
-
-**Prerequisite for:** D1, D2, D8, D9, and the entire workflow.
-
----
-
 ### G2 — Coordinator scoping decision provenance not modelled
 
 There is no model currently capturing the per-module scoping decision made

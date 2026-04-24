@@ -212,6 +212,87 @@ ModuleOutcomeContent.objects.filter(
 
 ---
 
+### `CourseOutcomeContent`
+
+Versioned content record for a course-level learning outcome (CLO).
+Anchored directly to `CourseIdentifier` — no separate identifier model
+is used, consistent with the deliberate design decision that CLOs do not
+require a slot-like stable cross-system anchor. Content revisions create
+new records rather than mutating existing ones; FK references in
+`ModuleOutcomeCLOMapping` point to this model and remain valid across
+revisions.
+
+The `CourseIdentifier` represents a persistent curriculum object across
+time. Entry-cohort versioning is not modelled here — that is a
+student-record concern outside the scope of this system. When CLOs
+change, a new `CourseOutcomeContent` document is approved and published,
+superseding the previous version via the standard `AssetVersion`
+machinery.
+
+| Field                  | Type                     | Notes                                                                                                                                                                                                                          |
+|------------------------|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                   | PK                       |                                                                                                                                                                                                                                |
+| `document`             | OneToOneField → Document | `related_name='course_outcome'`                                                                                                                                                                                                |
+| `course`               | FK → CourseIdentifier    | `related_name='course_outcomes'`                                                                                                                                                                                               |
+| `outcome_code`         | CharField                | Stable human-readable identifier, e.g. `CLO-K1`. Assigned at approval time as a workflow side effect, never at form initiation. Never reused after retirement.                                                                 |
+| `text`                 | TextField                | The outcome statement. Plain text.                                                                                                                                                                                             |
+| `descriptor_category`  | CharField                | `TextChoices`: `knowledge_understanding`, `intellectual_skills`, `practical_skills`, `transferable_skills`. Classifies the outcome within the FHEQ level descriptor.                                                           |
+| `ordering`             | PositiveIntegerField     | Display sequence within the course's outcome list. Used for rendering within descriptor category groups.                                                                                                                       |
+| `is_retired`           | BooleanField             | Default `False`. Set to retire; never deleted. Retirement prompts review of dependent `ModuleOutcomeCLOMapping` records.                                                                                                       |
+| `regulatory_documents` | M2M → RegulatoryDocument | Subject Benchmark Statement clauses, PSRB framework documents, or OfS conditions this outcome addresses. Nullable — not all outcomes require explicit regulatory citation.                                                     |
+
+**Constraints:** `unique_together = (course, outcome_code)`
+
+**Integrity note:** `document.tenant` must equal `course.tenant` —
+enforced in `clean()`.
+
+**Note on `outcome_code` assignment:** the code is not set by the author
+on the introduction form. It is assigned by the FSM approval side effect
+and recorded on the resulting `WorkflowEvent.metadata` and `AssetVersion`.
+The code encodes the descriptor category prefix and a sequential integer
+within that category for the course, e.g. `CLO-K1`, `CLO-K2`, `CLO-P1`.
+The assignment logic queries the highest existing suffix within the
+category for the course and increments it. Reviewers see "proposed new
+outcome" during the review period rather than the eventual code.
+
+**Note on FHEQ level:** FHEQ level is not stored directly on the content
+record. It is resolved at query time via `course.award_type`. The LLM
+regulatory pre-check uses this resolved level when assessing outcome
+alignment against descriptor standards.
+
+**Note on `notes` field:** an internal `notes` TextField for admin-role
+annotation is a likely future addition to both this model and
+`ModuleOutcomeContent`. It is omitted here pending a decision on scope and
+access control; it will not affect the relationships between this model and
+any other.
+
+**Active outcomes query:**
+
+```python
+CourseOutcomeContent.objects.filter(
+    course=course,
+    is_retired=False,
+).order_by('ordering')
+```
+
+**Active outcomes by descriptor category:**
+
+```python
+from itertools import groupby
+
+outcomes = CourseOutcomeContent.objects.filter(
+    course=course,
+    is_retired=False,
+).order_by('descriptor_category', 'ordering')
+
+grouped = {
+    k: list(v)
+    for k, v in groupby(outcomes, key=lambda o: o.descriptor_category)
+}
+```
+
+---
+
 ### `CourseSpecificationContent`
 
 No fields specified yet beyond the structural anchor. Stub pending
@@ -304,8 +385,7 @@ multiple MLOs across one or more modules.
 **Integrity note:** `module_outcome.module` must belong to the same
 course as `course_outcome` — i.e. a `CourseModuleMembership` record
 must exist linking `module_outcome.module` to
-`course_outcome.document.course_spec.course` (or equivalent traversal).
-Enforced in `clean()`.
+`course_outcome.course`. Enforced in `clean()`.
 
 ---
 
