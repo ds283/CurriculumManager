@@ -279,6 +279,60 @@ documents that are pushed back before the coordinator sees them.
 
 ---
 
+### D15 — Committee scheduling eligibility depends on `PublicationTarget` scope
+
+A document reaching `TLC_REVIEW` state is necessary but not sufficient for
+eligibility to be attached to a `CommitteeMeeting` as an `AgendaItem`. The
+committee scheduling logic must apply the following eligibility rule:
+
+A document at `TLC_REVIEW` is eligible for committee scheduling if and only
+if **one** of the following conditions holds:
+
+1. **Standalone** — the document's `WorkflowInstance` has no
+   `PublicationTarget` linkage (directly or via `ScheduledMilestone`). It
+   should be surfaced in the UI for inclusion in the next available
+   `CommitteeMeeting` for the relevant committee. Standalone documents are
+   prioritised for prompt scheduling so that they move efficiently through
+   the workflow without being held by orchestration concerns that do not
+   apply to them.
+
+2. **Orchestrated bundle complete** — the document's `WorkflowInstance` is
+   linked to a `PublicationTarget` (via `ScheduledMilestone` or `Task`),
+   and all sibling documents under that `PublicationTarget` have also
+   reached `TLC_REVIEW`. Only at this point is the bundle as a whole
+   eligible for committee scheduling. The parent CLO document's
+   advance-to-`TLC_REVIEW` transition (the Stage 8 bundle gate, D10) is
+   the moment this condition becomes satisfiable.
+
+Documents in the orchestrated path that have reached `TLC_REVIEW` but whose
+siblings have not are ineligible for committee scheduling. They must not be
+attached to a `CommitteeMeeting` until the bundle is complete.
+
+**UI implications:** the coordinator dashboard must distinguish two distinct
+sub-states for documents at `TLC_REVIEW`:
+
+- **Eligible — awaiting scheduling** — standalone documents, or orchestrated
+  bundles where all siblings are also at `TLC_REVIEW`. Surfaced as
+  actionable: the coordinator can attach to an upcoming `CommitteeMeeting`.
+- **Held — awaiting siblings** — orchestrated documents at `TLC_REVIEW`
+  where one or more siblings have not yet reached `TLC_REVIEW`. Displayed
+  with a summary of what remains outstanding, so the coordinator can see
+  exactly what is blocking committee scheduling.
+
+These are UI presentation states derived from the eligibility rule above,
+not additional FSM states. The FSM state remains `TLC_REVIEW` in both cases.
+
+**Implementation note:** the eligibility query runs against
+`PublicationTarget` scope at scheduling time, not at the point of FSM
+transition. Nothing in the FSM itself enforces or records eligibility —
+it is computed on demand by the scheduling UI and the committee attachment
+logic.
+
+**Depends on:** D10 (bundle gate), G4 (`AgendaItem` not yet modelled),
+G5 (bundle object not yet modelled).
+
+---
+
 ## Open Questions
 
 These are unresolved design questions that must be answered before the
