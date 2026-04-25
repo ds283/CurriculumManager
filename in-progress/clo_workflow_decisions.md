@@ -586,25 +586,31 @@ approve at each stage.
 
 ---
 
-### G7 — `PublicationTarget` provisional status not yet modelled
+### ~~G7~~ — `PublicationTarget` provisional status — **RESOLVED**
 
-D1 introduces the concept of a `PublicationTarget` with `status = PROVISIONAL`
-to accommodate coordinator-initiated CLO workflows where a firm target date is
-not yet known. This status is not currently modelled on `PublicationTarget`.
+Resolved by scheduling design decisions S1–S11. The following positions
+replace the open questions previously recorded here.
 
-The following questions need resolving before it can be implemented:
+- **`date_confidence` as a four-level `TextChoices`** (`WINDOW | PROVISIONAL |
+  INDICATIVE | CONFIRMED`) replaces the provisional/confirmed date pair.
+  A single `target_date` field is retained; `date_confidence` is the
+  reliability indicator. Confidence ordering: `WINDOW < PROVISIONAL <
+  INDICATIVE < CONFIRMED`. See S3.
 
-- Does `status` warrant a `TextChoices` field on `PublicationTarget`, or is
-  provisional state better represented as a nullable `confirmed_date` alongside
-  a required `provisional_date`, with confirmation being an explicit transition?
-- Should the backwards scheduler compute deadlines against a provisional target
-  date, and if so, how are provisional deadlines distinguished from confirmed
-  ones in the UI and in `ScheduledMilestone` records?
-- Is there a workflow action (coordinator confirms the target date) that
-  transitions the `PublicationTarget` out of provisional state, or is it a
-  simple field edit?
+- **The scheduler always computes against `target_date`**; `date_confidence`
+  is a propagation and display signal. When confidence is below `CONFIRMED`,
+  the scheduler additionally emits an uncertainty envelope on each
+  `ScheduledMilestone` (`earliest_must_complete` etc.). See S4.
 
-**Prerequisite for:** D1 (Path 2 provisional variant).
+- **Target date changes are audited** in `PublicationTargetDateChange`. The
+  coordinator confirms changes prompted by scheduler advisories; the advisory
+  FK is recorded on the log entry for traceability. See S2.
+
+- **No workflow transition is required** to advance `date_confidence`; it is
+  a field edit by the owner, constrained to be unidirectional toward
+  `CONFIRMED`. See S3.
+
+**Prerequisite for D1 (Path 2 provisional variant): now unblocked.**
 
 ---
 

@@ -996,73 +996,134 @@ caused which version action.
 
 ## Scheduling
 
-### `PublicationTarget`
+### `PublicationTarget` (revised)
 
-A desired outcome with a target date. Drives the backwards
-scheduler. All scheduled milestones are grouped under this entity.
+A desired outcome with a target date. Drives the backwards scheduler.
+All scheduled milestones are grouped under this entity.
 
-| Field                  | Type                             | Notes                                                                                                           |
-|------------------------|----------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| `id`                   | PK                               |                                                                                                                 |
-| `tenant`               | FK → Tenant                      |                                                                                                                 |
-| `label`                | CharField                        | e.g. `AY 2029/30 course review`                                                                                 |
-| `description`          | TextField                        |                                                                                                                 |
-| `target_document_type` | CharField                        | The terminal document type                                                                                      |
-| `target_state`         | CharField                        | The required terminal state                                                                                     |
-| `target_date`          | DateField                        |                                                                                                                 |
-| `owner`                | FK → User                        | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
-| `course`               | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified course. Unanchored targets are allowed.                            |
-| `is_active`            | BooleanField                     |                                                                                                                 |
-| `created_at`           | DateTimeField                    | auto                                                                                                            |
+`target_date` is coordinator-owned and is never written by the scheduler.
+Every change to `target_date` is recorded in `PublicationTargetDateChange`.
+`schedule_status` is the only field written by the scheduler.
 
-**Implementation note:** if `course` is not null, `tenant` must equal `course.tenant`.
-Enforced in `clean()`.
+| Field                   | Type                             | Notes                                                                                                           |
+|-------------------------|----------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `id`                    | PK                               |                                                                                                                 |
+| `tenant`                | FK → Tenant                      |                                                                                                                 |
+| `label`                 | CharField                        | e.g. `AY 2029/30 course review`                                                                                 |
+| `description`           | TextField                        |                                                                                                                 |
+| `target_document_type`  | CharField                        | The terminal document type                                                                                      |
+| `target_state`          | CharField                        | The required terminal state                                                                                     |
+| `target_date`           | DateField                        | Coordinator-owned. Never written by the scheduler.                                                              |
+| `date_confidence`       | CharField (TextChoices)          | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`     |
+| `owner`                 | FK → User                        | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
+| `course`                | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified course. Unanchored targets are allowed.                            |
+| `schedule_status`       | CharField (TextChoices)          | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except ABANDONED/SUPERSEDED. |
+| `created_at`            | DateTimeField                    | auto                                                                                                            |
+
+**Computed property:** `is_active` returns `True` when `schedule_status` is not
+in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
+
+**Constraints:**
+- If `course` is not null, `tenant` must equal `course.tenant`. Enforced in `clean()`.
+- `date_confidence` may only transition toward `CONFIRMED`. Enforced in `clean()`.
+- `abandoned_rationale` must be non-empty when `schedule_status = ABANDONED`. Enforced in `clean()`.
 
 ---
 
-### `ScheduledMilestone`
+### `PublicationTargetDateChange` *(append-only — new model)*
+
+Audited log of every change to `PublicationTarget.target_date`. One record
+per change. Never updated or deleted.
+
+| Field                | Type                   | Notes                                              |
+|----------------------|------------------------|----------------------------------------------------|
+| `id`                 | PK                     |                                                    |
+| `publication_target` | FK → PublicationTarget | `related_name='date_changes'`                      |
+| `previous_date`      | DateField              |                                                    |
+| `new_date`           | DateField              |                                                    |
+| `changed_by`         | FK → User              |                                                    |
+| `changed_at`         | DateTimeField          | auto                                               |
+| `rationale`          | TextField (blank)      | Optional — populated when confirming a scheduler advisory |
+| `advisory`           | FK → SchedulerAdvisory (nullable) | The advisory that prompted this change, if any |
+
+**Indexes:** `(publication_target, changed_at)`
+
+---
+
+### `SchedulerAdvisory` *(new model)*
+
+Advisory notification raised by the scheduler when a condition requiring
+coordinator attention is detected. Deduplicated: at most one open advisory
+per `(publication_target, advisory_type)` pair. The coordinator dismisses
+the advisory once actioned; a new advisory may be raised if the condition
+recurs.
+
+| Field                  | Type                     | Notes                                                                 |
+|------------------------|--------------------------|-----------------------------------------------------------------------|
+| `id`                   | PK                       |                                                                       |
+| `tenant`               | FK → Tenant              |                                                                       |
+| `publication_target`   | FK → PublicationTarget   | `related_name='advisories'`                                           |
+| `advisory_type`        | CharField (TextChoices)  | `SUGGESTED_RESCHEDULE \| MILESTONE_CRITICAL \| TARGET_UNACHIEVABLE`  |
+| `suggested_target_date`| DateField (nullable)     | Populated for `SUGGESTED_RESCHEDULE` type only                        |
+| `detail`               | TextField (blank)        | Plain-English explanation of the condition, generated by the scheduler|
+| `generated_at`         | DateTimeField            | auto                                                                  |
+| `dismissed_by`         | FK → User (nullable)     |                                                                       |
+| `dismissed_at`         | DateTimeField (nullable) |                                                                       |
+
+**Constraints:**
+- `UniqueConstraint(publication_target, advisory_type, condition=Q(dismissed_at__isnull=True))` —
+  at most one open advisory per target per type.
+- `dismissed_by` and `dismissed_at` must both be set or both NULL. Enforced in `clean()`.
+- `suggested_target_date` must be non-NULL when `advisory_type = SUGGESTED_RESCHEDULE`. Enforced in `clean()`.
+
+**Indexes:** `(publication_target, advisory_type, dismissed_at)`,
+`(dismissed_at,)` — supports querying all open advisories.
+
+---
+
+### `ScheduledMilestone` (revised)
 
 One record per document required by a publication target. Carries the
-computed deadline, initiation date, risk status, and linking decision.
-Rebuilt atomically when any scheduling input changes.
+computed deadline, initiation date, risk status, date confidence, and
+uncertainty envelope. Rebuilt atomically when any scheduling input changes.
 
-A milestone is always anchored to a `PublicationTarget`. That target may
-be a conventional publication cycle (prospectus, course review) or an
-event-driven coordination effort with a real external deadline, such as a
-reaccreditation submission. In both cases the target date drives the
-backwards scheduler. A milestone may be shared across multiple
-`PublicationTarget` instances via `MilestonePublicationTarget`; its
-effective due date for scheduling purposes is always `MIN(target_date)`
-across all linked targets.
-
-| Field                  | Type                     | Notes                                           |
-|------------------------|--------------------------|-------------------------------------------------|
-| `id`                   | PK                       |                                                 |
-| `publication_target`   | FK → PublicationTarget   | Originating target. `related_name='milestones'` |
-| `document`             | FK → Document (nullable) | NULL if workflow not yet initiated              |
-| `document_type`        | CharField                | Required document type                          |
-| `required_state`       | CharField                | State the document must reach                   |
-| `must_be_complete_by`  | DateField                | Computed — minimum across all linked targets    |
-| `must_be_initiated_by` | DateField                | Computed by backwards scheduler                 |
-| `is_critical_path`     | BooleanField             |                                                 |
-| `at_risk`              | BooleanField             | Current trajectory cannot meet deadline         |
-| `computed_at`          | DateTimeField            | auto — when the scheduler last ran              |
+| Field                    | Type                     | Notes                                                                 |
+|--------------------------|--------------------------|-----------------------------------------------------------------------|
+| `id`                     | PK                       |                                                                       |
+| `publication_target`     | FK → PublicationTarget   | Originating target. `related_name='milestones'`                       |
+| `document`               | FK → Document (nullable) | NULL if workflow not yet initiated                                    |
+| `document_type`          | CharField                | Required document type                                                |
+| `required_state`         | CharField                | State the document must reach                                         |
+| `must_be_complete_by`    | DateField                | Computed point estimate — minimum across all linked targets           |
+| `earliest_must_complete` | DateField (nullable)     | Computed from earliest plausible target date. NULL when CONFIRMED.    |
+| `latest_must_complete`   | DateField (nullable)     | Computed from latest plausible target date. NULL when CONFIRMED.      |
+| `must_be_initiated_by`   | DateField                | Computed point estimate by backwards scheduler                        |
+| `earliest_must_initiate` | DateField (nullable)     | Computed from earliest plausible target date. NULL when CONFIRMED.    |
+| `latest_must_initiate`   | DateField (nullable)     | Computed from latest plausible target date. NULL when CONFIRMED.      |
+| `date_confidence`        | CharField (TextChoices)  | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. MIN across all linked targets. |
+| `is_critical_path`       | BooleanField             |                                                                       |
+| `at_risk`                | BooleanField             | Current trajectory cannot meet deadline                               |
+| `is_overdue`             | BooleanField             | `must_be_complete_by` is past and `required_state` not yet reached    |
+| `computed_at`            | DateTimeField            | auto — when the scheduler last ran                                    |
 
 **Constraints:** `unique_together = (publication_target, document_type, document)`
 
 **Indexes:** `(publication_target, must_be_complete_by)`, `(document,)`,
-`(document_type)`
+`(document_type)`, `(date_confidence,)`, `(is_overdue,)`
 
-**Scheduling note:** `must_be_complete_by` is recomputed whenever a
-`MilestonePublicationTarget` row is added or removed for this milestone.
-The scheduler task is enqueued for all linked targets when this happens,
-since a shared milestone with an earlier effective deadline may alter the
-critical path of every target it belongs to.
+**Scheduling note:** `must_be_complete_by` and the uncertainty envelope are
+recomputed whenever a `MilestonePublicationTarget` row is added or removed,
+or whenever a linked `CommitteeMeeting.date_confidence` or
+`CommitteeMeeting.meeting_date` changes.
 
-**Note:** The link status and linking decision fields previously on this
-model have moved to `MilestoneOverlap`, which is now the sole coordination
-and awareness surface. A milestone is created or extended as a *result* of
-a linking decision; it does not record the decision itself.
+**Envelope semantics:** `earliest_must_complete` and `earliest_must_initiate`
+are computed from the *earliest* plausible target date (tightest deadline);
+`latest_must_complete` and `latest_must_initiate` from the *latest* plausible
+target date (most relaxed deadline). The point estimate fields
+(`must_be_complete_by`, `must_be_initiated_by`) are always computed against
+`PublicationTarget.target_date` as the primary anchor.
+
+---
 
 ---
 
@@ -1224,22 +1285,44 @@ surfaced in the UI, and always labelled with provenance.
 
 ## Meetings and agenda
 
-### `CommitteeMeeting`
+### `CommitteeMeeting` (revised)
 
-Meeting dates and submission deadlines for governance committees.
-Used by the backwards scheduler to resolve committee-gated
-transition durations.
+Meeting dates and submission deadlines for governance committees. Used by
+the backwards scheduler to resolve committee-gated transition durations.
+Supports both standing recurring meetings and exceptional ad hoc meetings.
 
-| Field                 | Type                     | Notes                            |
-|-----------------------|--------------------------|----------------------------------|
-| `id`                  | PK                       |                                  |
-| `tenant`              | FK → Tenant              |                                  |
-| `committee`           | FK → CommitteeIdentifier |                                  |
-| `meeting_date`        | DateField                |                                  |
-| `submission_deadline` | DateField                | Latest date for paper submission |
-| `academic_year`       | CharField                | e.g. `2028/29`                   |
+| Field                   | Type                     | Notes                                                                  |
+|-------------------------|--------------------------|------------------------------------------------------------------------|
+| `id`                    | PK                       |                                                                        |
+| `tenant`                | FK → Tenant              |                                                                        |
+| `committee`             | FK → CommitteeIdentifier |                                                                        |
+| `academic_year`         | CharField                | e.g. `2028/29`                                                         |
+| `meeting_date`          | DateField (nullable)     | NULL when `date_confidence = WINDOW`. Required for INDICATIVE/CONFIRMED.|
+| `earliest_expected_date`| DateField (nullable)     | Lower bound of scheduling window. Populated for standing meetings.     |
+| `latest_expected_date`  | DateField (nullable)     | Upper bound of scheduling window. Populated for standing meetings.     |
+| `date_confidence`       | CharField (TextChoices)  | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`                    |
+| `submission_deadline`   | DateField (nullable)     | NULL when `meeting_date` is NULL. Latest date for paper submission.    |
+| `is_exceptional`        | BooleanField             | Ad hoc meeting; not part of standing calendar. Default False.          |
+| `notes`                 | TextField (blank)        |                                                                        |
+| `confirmed_by`          | FK → User (nullable)     | Set when `date_confidence` transitions to CONFIRMED                    |
+| `confirmed_at`          | DateTimeField (nullable) |                                                                        |
 
-**Constraints:** `tenant` must agree with `committee.tenant`. Enforced in `clean()`
+**Constraints:**
+- `tenant` must agree with `committee.tenant`. Enforced in `clean()`.
+- `meeting_date` must be non-NULL when `date_confidence` is `INDICATIVE` or
+  `CONFIRMED`. Enforced in `clean()`.
+- `submission_deadline` must be non-NULL when `meeting_date` is non-NULL.
+  Enforced in `clean()`.
+- At least one of `meeting_date` or the pair (`earliest_expected_date`,
+  `latest_expected_date`) must be set. Enforced in `clean()`.
+- `earliest_expected_date < latest_expected_date` when both are set.
+  Enforced in `clean()`.
+- `confirmed_by` and `confirmed_at` must both be set or both NULL.
+  Enforced in `clean()`.
+
+**Scheduler trigger:** when `date_confidence` transitions to `CONFIRMED`, the
+scheduler is enqueued for all `PublicationTarget` records whose critical path
+includes this meeting.
 
 ---
 
