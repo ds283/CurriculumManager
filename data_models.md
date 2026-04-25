@@ -798,20 +798,21 @@ Shared envelope for all document and form types. All cross-cutting
 queries operate on this table. Type-specific content lives in a
 separate table linked by `OneToOneField`.
 
-| Field              | Type                                        | Notes                                                         |
-|--------------------|---------------------------------------------|---------------------------------------------------------------|
-| `id`               | PK                                          |                                                               |
-| `tenant`           | FK → Tenant                                 |                                                               |
-| `document_type`    | CharField                                   | `DocumentType` choices — see registry                         |
-| `classification`   | CharField                                   | `TextChoices`: `published_asset`, `workflow_form`, `internal` |
-| `parent`           | FK → Document (nullable)                    | Self-referential ownership hierarchy                          |
-| `title`            | CharField                                   |                                                               |
-| `reference_code`   | CharField                                   | Unique per tenant                                             |
-| `due_date`         | DateTimeField (nullable)                    | Updated by scheduler                                          |
-| `current_workflow` | OneToOneField → WorkflowInstance (nullable) | Denormalised for fast reads                                   |
-| `current_version`  | OneToOneField → AssetVersion (nullable)     | Denormalised for fast reads                                   |
-| `created_at`       | DateTimeField                               | auto                                                          |
-| `updated_at`       | DateTimeField                               | auto                                                          |
+| Field              | Type                                        | Notes                                                                                                                                                                                                           |
+|--------------------|---------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`               | PK                                          |                                                                                                                                                                                                                 |
+| `tenant`           | FK → Tenant                                 |                                                                                                                                                                                                                 |
+| `document_type`    | CharField                                   | `DocumentType` choices — see registry                                                                                                                                                                           |
+| `classification`   | CharField                                   | `TextChoices`: `published_asset`, `workflow_form`, `internal`                                                                                                                                                   |
+| `parent`           | FK → Document (nullable)                    | Self-referential ownership hierarchy                                                                                                                                                                            |
+| `title`            | CharField                                   |                                                                                                                                                                                                                 |
+| `reference_code`   | CharField                                   | Unique per tenant                                                                                                                                                                                               |
+| `change_rationale` | TextField (nullable, blank)                 | Formal governance justification for the change. Populated at workflow initiation. Nullable because not all document workflows are change-driven (e.g. initial CLO introduction at programme inception). See D2. |
+| `due_date`         | DateTimeField (nullable)                    | Updated by scheduler                                                                                                                                                                                            |
+| `current_workflow` | OneToOneField → WorkflowInstance (nullable) | Denormalised for fast reads                                                                                                                                                                                     |
+| `current_version`  | OneToOneField → AssetVersion (nullable)     | Denormalised for fast reads                                                                                                                                                                                     |
+| `created_at`       | DateTimeField                               | auto                                                                                                                                                                                                            |
+| `updated_at`       | DateTimeField                               | auto                                                                                                                                                                                                            |
 
 **Constraints:** `unique_together = (tenant, reference_code)`
 
@@ -856,16 +857,17 @@ Current FSM state of a document. One instance per document.
 Uses `GenericForeignKey` so it can reference any document type
 without requiring per-type FK columns.
 
-| Field           | Type                 | Notes                                     |
-|-----------------|----------------------|-------------------------------------------|
-| `id`            | PK                   |                                           |
-| `content_type`  | FK → ContentType     | For GenericForeignKey                     |
-| `object_id`     | PositiveIntegerField | For GenericForeignKey                     |
-| `form`          | GenericForeignKey    | Points to the document                    |
-| `workflow_type` | CharField            | e.g. `module_specification`               |
-| `state`         | CharField            | Stores `enum.name`, e.g. `FACULTY_REVIEW` |
-| `created_at`    | DateTimeField        | auto                                      |
-| `updated_at`    | DateTimeField        | auto                                      |
+| Field              | Type                 | Notes                                                                                                                                                                                  |
+|--------------------|----------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`               | PK                   |                                                                                                                                                                                        |
+| `content_type`     | FK → ContentType     | For GenericForeignKey                                                                                                                                                                  |
+| `object_id`        | PositiveIntegerField | For GenericForeignKey                                                                                                                                                                  |
+| `form`             | GenericForeignKey    | Points to the document                                                                                                                                                                 |
+| `workflow_type`    | CharField            | e.g. `module_specification`                                                                                                                                                            |
+| `state`            | CharField            | Stores `enum.name`, e.g. `FACULTY_REVIEW`                                                                                                                                              |
+| `originating_task` | FK → Task (nullable) | Set when this `WorkflowInstance` was created in response to a convenor nomination under a dispatched `Task`. NULL for all self-initiated workflows. `related_name='spawned_instances'` |
+| `created_at`       | DateTimeField        | auto                                                                                                                                                                                   |
+| `updated_at`       | DateTimeField        | auto                                                                                                                                                                                   |
 
 **Indexes:** `(content_type, object_id)`, `(workflow_type, state)`
 
@@ -895,21 +897,39 @@ Full audit trail of every FSM transition. Never updated or deleted.
 
 ### `Task`
 
-A pending action for a role pool or individual. Created and
-superseded by FSM transitions. One task per pool — not one per user.
+A pending action for a role pool or individual. Created and superseded by FSM
+transitions. One task per pool — not one per user.
 
-| Field               | Type                     | Notes                                                          |
-|---------------------|--------------------------|----------------------------------------------------------------|
-| `id`                | PK                       |                                                                |
-| `workflow_instance` | FK → WorkflowInstance    | `related_name='tasks'`                                         |
-| `event`             | CharField                | The FSM event this task enables                                |
-| `assignee_pool`     | CharField                | Role name — who can act                                        |
-| `claimed_by`        | FK → User (nullable)     | Set atomically on claim                                        |
-| `claimed_at`        | DateTimeField (nullable) |                                                                |
-| `status`            | CharField                | `TextChoices`: `pending`, `claimed`, `completed`, `superseded` |
-| `priority_score`    | IntegerField             | Computed at write time                                         |
-| `due_date`          | DateTimeField (nullable) | Set and updated by scheduler                                   |
-| `created_at`        | DateTimeField            | auto                                                           |
+**Model ordering note:** `Task` must be defined before `ScheduledMilestone` in
+`models.py`. `Task.scheduled_milestone` uses a string forward reference
+`'ScheduledMilestone'`; `ScheduledMilestone.originating_task` may reference
+`Task` directly.
+
+| Field                 | Type                                   | Notes                                                                                                                                     |
+|-----------------------|----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                  | PK                                     |                                                                                                                                           |
+| `workflow_instance`   | FK → WorkflowInstance                  | `related_name='tasks'`                                                                                                                    |
+| `event`               | CharField                              | The FSM event this task enables                                                                                                           |
+| `assignee_pool`       | CharField                              | Role name — who can act                                                                                                                   |
+| `claimed_by`          | FK → User (nullable)                   | Set atomically on claim                                                                                                                   |
+| `claimed_at`          | DateTimeField (nullable)               |                                                                                                                                           |
+| `status`              | CharField (TextChoices)                | `PENDING \| CLAIMED \| IN_PROGRESS \| COMPLETED \| ABANDONED \| SUPERSEDED`                                                               |
+| `scheduled_milestone` | FK → `'ScheduledMilestone'` (nullable) | Set when this task is dispatched against a pre-existing milestone (CLO-driven orchestrated workflows). NULL for ordinary FSM-gated tasks. |
+| `context_note`        | TextField (nullable, blank)            | Coordinator's module-specific guidance to the convenor. Populated as a Stage 3 side effect; not authored at task creation.                |
+| `priority_score`      | IntegerField                           | Computed at write time                                                                                                                    |
+| `due_date`            | DateTimeField (nullable)               | Set and updated by scheduler                                                                                                              |
+| `created_at`          | DateTimeField                          | auto                                                                                                                                      |
+
+**Status vocabulary:**
+
+| Value         | Meaning                                                                                                                                                |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `PENDING`     | Dispatched, not yet claimed                                                                                                                            |
+| `CLAIMED`     | Claimed by a user; no document nominated yet                                                                                                           |
+| `IN_PROGRESS` | Convenor has nominated at least one document; one or more child milestones exist                                                                       |
+| `COMPLETED`   | All obligations under this task are resolved                                                                                                           |
+| `ABANDONED`   | Explicitly cancelled by the coordinator or administrator, e.g. module removed from scope. Independent of the state of the driving `PublicationTarget`. |
+| `SUPERSEDED`  | Closed by an FSM transition; no longer the relevant work item. Retained for audit.                                                                     |
 
 **Indexes:** `(status, assignee_pool, priority_score)`
 
@@ -917,12 +937,81 @@ superseded by FSM transitions. One task per pool — not one per user.
 
 ```sql
 UPDATE tasks
-SET claimed_by=$user,
-    status='claimed'
+SET claimed_by = $user,
+    status     = 'CLAIMED'
 WHERE id = $id
   AND claimed_by IS NULL
 -- Zero rows affected → another user claimed first
 ```
+
+**`clean()` rules:**
+
+- If `scheduled_milestone` is set, `scheduled_milestone.document` must be NULL.
+  A task cannot be dispatched against an already-live milestone.
+- `claimed_by` and `claimed_at` must both be set or both NULL.
+
+---
+
+### `ScheduledMilestone`
+
+One record per document required by a publication target. Carries the computed
+deadline, initiation date, status, and uncertainty envelope. Rebuilt atomically
+when any scheduling input changes, except for terminal-state records which are
+retained for audit.
+
+**Model ordering note:** `ScheduledMilestone` must be defined after `Task` in
+`models.py`. `originating_task` may reference `Task` directly.
+
+| Field                    | Type                     | Notes                                                                                                                                                      |
+|--------------------------|--------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                     | PK                       |                                                                                                                                                            |
+| `publication_target`     | FK → PublicationTarget   | Originating target. `related_name='milestones'`                                                                                                            |
+| `document`               | FK → Document (nullable) | NULL if workflow not yet initiated                                                                                                                         |
+| `document_type`          | CharField                | Required document type                                                                                                                                     |
+| `required_state`         | CharField                | State the document must reach                                                                                                                              |
+| `status`                 | CharField (TextChoices)  | `ACTIVE \| AT_RISK \| OVERDUE \| COMPLETED \| ABANDONED \| SUPERSEDED`                                                                                     |
+| `originating_task`       | FK → Task (nullable)     | The task whose nomination created this milestone. NULL for scheduler-generated milestones not driven by a convenor task. `related_name='child_milestones'` |
+| `must_be_complete_by`    | DateField                | Computed point estimate — minimum across all linked targets                                                                                                |
+| `earliest_must_complete` | DateField (nullable)     | Computed from earliest plausible target date. NULL when `date_confidence = CONFIRMED`.                                                                     |
+| `latest_must_complete`   | DateField (nullable)     | Computed from latest plausible target date. NULL when `date_confidence = CONFIRMED`.                                                                       |
+| `must_be_initiated_by`   | DateField                | Computed point estimate by backwards scheduler                                                                                                             |
+| `earliest_must_initiate` | DateField (nullable)     | Computed from earliest plausible target date. NULL when `date_confidence = CONFIRMED`.                                                                     |
+| `latest_must_initiate`   | DateField (nullable)     | Computed from latest plausible target date. NULL when `date_confidence = CONFIRMED`.                                                                       |
+| `date_confidence`        | CharField (TextChoices)  | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. MIN across all linked targets.                                                                         |
+| `is_critical_path`       | BooleanField             |                                                                                                                                                            |
+| `computed_at`            | DateTimeField            | auto — when the scheduler last ran                                                                                                                         |
+
+**Status vocabulary:**
+
+| Value        | Meaning                                                                                            |
+|--------------|----------------------------------------------------------------------------------------------------|
+| `ACTIVE`     | In-flight; scheduler is computing against it; no deadline concern                                  |
+| `AT_RISK`    | A deadline concern has been detected and flagged by the scheduler                                  |
+| `OVERDUE`    | `must_be_complete_by` is past and `required_state` not yet reached                                 |
+| `COMPLETED`  | Document has reached `required_state`                                                              |
+| `ABANDONED`  | Module removed from scope; milestone retained for audit. Independent of `PublicationTarget` state. |
+| `SUPERSEDED` | Replaced by a new milestone, e.g. due to a rescoping exercise. Retained for audit.                 |
+
+`ACTIVE → AT_RISK → OVERDUE` is a strict severity progression. `COMPLETED`,
+`ABANDONED`, and `SUPERSEDED` are terminal states. A milestone may not regress
+from a terminal state. Enforced in `clean()`.
+
+**Constraints:** `unique_together = (publication_target, document_type, document)`
+
+**Indexes:** `(publication_target, must_be_complete_by)`, `(document,)`,
+`(document_type,)`, `(date_confidence,)`, `(status,)`
+
+**Scheduling note:** `must_be_complete_by` and the uncertainty envelope are
+recomputed whenever a `MilestonePublicationTarget` row is added or removed,
+or whenever a linked `CommitteeMeeting.date_confidence` or
+`CommitteeMeeting.meeting_date` changes. Terminal-state milestones are excluded
+from recomputation.
+
+**Envelope semantics:** `earliest_must_complete` and `earliest_must_initiate`
+are computed from the earliest plausible target date (tightest deadline);
+`latest_must_complete` and `latest_must_initiate` from the latest plausible
+target date (most relaxed deadline). Point estimate fields are always computed
+against `PublicationTarget.target_date` as the primary anchor.
 
 ---
 
@@ -1005,20 +1094,21 @@ All scheduled milestones are grouped under this entity.
 Every change to `target_date` is recorded in `PublicationTargetDateChange`.
 `schedule_status` is the only field written by the scheduler.
 
-| Field                   | Type                             | Notes                                                                                                           |
-|-------------------------|----------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| `id`                    | PK                               |                                                                                                                 |
-| `tenant`                | FK → Tenant                      |                                                                                                                 |
-| `label`                 | CharField                        | e.g. `AY 2029/30 course review`                                                                                 |
-| `description`           | TextField                        |                                                                                                                 |
-| `target_document_type`  | CharField                        | The terminal document type                                                                                      |
-| `target_state`          | CharField                        | The required terminal state                                                                                     |
-| `target_date`           | DateField                        | Coordinator-owned. Never written by the scheduler.                                                              |
-| `date_confidence`       | CharField (TextChoices)          | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`     |
-| `owner`                 | FK → User                        | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation review coordinator |
-| `course`                | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified course. Unanchored targets are allowed.                            |
-| `schedule_status`       | CharField (TextChoices)          | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except ABANDONED/SUPERSEDED. |
-| `created_at`            | DateTimeField                    | auto                                                                                                            |
+| Field                  | Type                             | Notes                                                                                                                                            |
+|------------------------|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                   | PK                               |                                                                                                                                                  |
+| `tenant`               | FK → Tenant                      |                                                                                                                                                  |
+| `label`                | CharField                        | e.g. `AY 2029/30 course review`                                                                                                                  |
+| `description`          | TextField                        |                                                                                                                                                  |
+| `target_document_type` | CharField                        | The terminal document type                                                                                                                       |
+| `target_state`         | CharField                        | The required terminal state                                                                                                                      |
+| `target_date`          | DateField                        | Coordinator-owned. Never written by the scheduler.                                                                                               |
+| `date_confidence`      | CharField (TextChoices)          | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                       |
+| `owner`                | FK → User                        | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                         |
+| `course`               | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                             |
+| `schedule_status`      | CharField (TextChoices)          | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`. |
+| `abandoned_rationale`  | TextField (blank)                | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.            |
+| `created_at`           | DateTimeField                    | auto                                                                                                                                             |
 
 **Computed property:** `is_active` returns `True` when `schedule_status` is not
 in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
@@ -1078,52 +1168,6 @@ recurs.
 
 **Indexes:** `(publication_target, advisory_type, dismissed_at)`,
 `(dismissed_at,)` — supports querying all open advisories.
-
----
-
-### `ScheduledMilestone` (revised)
-
-One record per document required by a publication target. Carries the
-computed deadline, initiation date, risk status, date confidence, and
-uncertainty envelope. Rebuilt atomically when any scheduling input changes.
-
-| Field                    | Type                     | Notes                                                                 |
-|--------------------------|--------------------------|-----------------------------------------------------------------------|
-| `id`                     | PK                       |                                                                       |
-| `publication_target`     | FK → PublicationTarget   | Originating target. `related_name='milestones'`                       |
-| `document`               | FK → Document (nullable) | NULL if workflow not yet initiated                                    |
-| `document_type`          | CharField                | Required document type                                                |
-| `required_state`         | CharField                | State the document must reach                                         |
-| `must_be_complete_by`    | DateField                | Computed point estimate — minimum across all linked targets           |
-| `earliest_must_complete` | DateField (nullable)     | Computed from earliest plausible target date. NULL when CONFIRMED.    |
-| `latest_must_complete`   | DateField (nullable)     | Computed from latest plausible target date. NULL when CONFIRMED.      |
-| `must_be_initiated_by`   | DateField                | Computed point estimate by backwards scheduler                        |
-| `earliest_must_initiate` | DateField (nullable)     | Computed from earliest plausible target date. NULL when CONFIRMED.    |
-| `latest_must_initiate`   | DateField (nullable)     | Computed from latest plausible target date. NULL when CONFIRMED.      |
-| `date_confidence`        | CharField (TextChoices)  | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. MIN across all linked targets. |
-| `is_critical_path`       | BooleanField             |                                                                       |
-| `at_risk`                | BooleanField             | Current trajectory cannot meet deadline                               |
-| `is_overdue`             | BooleanField             | `must_be_complete_by` is past and `required_state` not yet reached    |
-| `computed_at`            | DateTimeField            | auto — when the scheduler last ran                                    |
-
-**Constraints:** `unique_together = (publication_target, document_type, document)`
-
-**Indexes:** `(publication_target, must_be_complete_by)`, `(document,)`,
-`(document_type)`, `(date_confidence,)`, `(is_overdue,)`
-
-**Scheduling note:** `must_be_complete_by` and the uncertainty envelope are
-recomputed whenever a `MilestonePublicationTarget` row is added or removed,
-or whenever a linked `CommitteeMeeting.date_confidence` or
-`CommitteeMeeting.meeting_date` changes.
-
-**Envelope semantics:** `earliest_must_complete` and `earliest_must_initiate`
-are computed from the *earliest* plausible target date (tightest deadline);
-`latest_must_complete` and `latest_must_initiate` from the *latest* plausible
-target date (most relaxed deadline). The point estimate fields
-(`must_be_complete_by`, `must_be_initiated_by`) are always computed against
-`PublicationTarget.target_date` as the primary anchor.
-
----
 
 ---
 

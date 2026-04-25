@@ -175,8 +175,8 @@ The scheduler is idempotent: if no inputs have changed since the previous run,
 it writes nothing and fires no notifications. This makes daily runs cheap as
 the number of active targets grows.
 
-**Rationale:** without periodic runs, a milestone could become `is_overdue` and
-a target could tip into `UNACHIEVABLE` silently, with the coordinator only
+**Rationale:** without periodic runs, a milestone could transition to `status = OVERDUE`
+and a target could tip into `UNACHIEVABLE` silently, with the coordinator only
 discovering the situation when an unrelated event (e.g. a committee meeting
 date change) triggers the next recompute. Daily runs bound the detection lag
 to at most one day.
@@ -251,3 +251,54 @@ normally, only that it had been abandoned or superseded.
 `UNACHIEVABLE` is **not** terminal — a coordinator may recover by adjusting
 the target date, after which the scheduler may move the status back to
 `AT_RISK` or `ON_TRACK`.
+
+---
+
+### S12 — `ScheduledMilestone` carries an explicit `status` field; `at_risk` and `is_overdue` boolean fields are removed
+
+`ScheduledMilestone` previously carried two boolean fields — `at_risk` and
+`is_overdue` — as independent scheduler outputs. These are replaced by a
+single `status` CharField with the following `TextChoices`:
+
+| Value        | Meaning                                                                                            |
+|--------------|----------------------------------------------------------------------------------------------------|
+| `ACTIVE`     | In-flight; scheduler is computing against it; no deadline concern                                  |
+| `AT_RISK`    | A deadline concern has been detected and flagged by the scheduler                                  |
+| `OVERDUE`    | `must_be_complete_by` is past and `required_state` not yet reached                                 |
+| `COMPLETED`  | Document has reached `required_state`                                                              |
+| `ABANDONED`  | Module removed from scope; milestone retained for audit. Independent of `PublicationTarget` state. |
+| `SUPERSEDED` | Replaced by a new milestone, e.g. due to a rescoping exercise. Retained for audit.                 |
+
+`ACTIVE → AT_RISK → OVERDUE` is a strict severity progression for active
+milestones. A milestone may not regress along this progression, and may not
+regress from any terminal state (`COMPLETED`, `ABANDONED`, `SUPERSEDED`).
+Enforced in `clean()`.
+
+The distinction between `ABANDONED` and `SUPERSEDED` mirrors the vocabulary
+on `PublicationTarget` (see S1): `ABANDONED` is a deliberate human act (a
+coordinator or administrator removes the module from scope); `SUPERSEDED` is
+a systemic consequence (the milestone is replaced by a new one as a result
+of a rescoping exercise). Both terminal states are retained for audit rather
+than deleted.
+
+**Rationale for collapsing the boolean fields:** `at_risk` and `is_overdue`
+are points on a single severity spectrum, not independent dimensions. A
+milestone cannot meaningfully be both `AT_RISK` and `OVERDUE` simultaneously
+— `OVERDUE` strictly subsumes `AT_RISK`. Representing them as independent
+booleans allowed an incoherent combination (`at_risk=True, is_overdue=True`)
+that a status field precludes by construction. Additionally, `is_overdue` was
+a denormalised derived value (computable from `must_be_complete_by` and the
+document's workflow state) with no precise definition of `at_risk` to
+accompany it. The status field resolves both problems.
+
+**Trigger criterion for `AT_RISK`:** the scheduler sets `status = AT_RISK`
+when `must_be_initiated_by` has passed and `document` is still NULL —
+meaning the initiation window has closed without the work being started.
+This is the only computable trigger currently available, since the system
+has no visibility into how complete a convenor's in-progress work is. The
+model is deliberately agnostic about the triggering logic: the status field
+records the scheduler's assessment, and the criterion may be refined or
+extended in future without a schema change.
+
+**Prerequisite for:** coordinator dashboard risk view; `ScheduledMilestone`
+rebuild logic in the scheduler.

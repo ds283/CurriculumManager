@@ -91,6 +91,10 @@ creation.
 
 ---
 
+## Updates to `clo_workflow_decisions.md`
+
+---
+
 ### D3a — `Task` carries a FK to the originating `ScheduledMilestone`; no
 direct `PublicationTarget` FK is needed
 
@@ -104,13 +108,14 @@ document will fulfil it.
 
 The `PublicationTarget` linkage is carried by the `ScheduledMilestone`
 itself. `Task` does not need a direct FK to `PublicationTarget`; the target
-is always reachable via `Task.scheduled_milestone → ScheduledMilestone.publication_target`.
+is always reachable via `Task.scheduled_milestone →
+ScheduledMilestone.publication_target`.
 
-The coordinator dashboard risk view for unresolved obligations is therefore
-a query over `ScheduledMilestone` records with `document = NULL` and an
-approaching `must_be_initiated_by` date — not a query over tasks without
-child milestones. The scheduler treats these milestones as unresolved
-dependencies and surfaces them as risk flags.
+The coordinator dashboard risk view for unresolved obligations is a query
+over `ScheduledMilestone` records with `document = NULL` and an approaching
+`must_be_initiated_by` date — not a query over tasks without child
+milestones. The scheduler treats these milestones as unresolved dependencies
+and surfaces them as risk flags.
 
 When a convenor nominates a document under a `Task` — whether by creating a
 new `ModuleOutcomeContent` or opening a revision workflow on an existing one
@@ -126,15 +131,28 @@ child milestones inherit the `PublicationTarget` linkage from the parent
 milestone via the scheduler, not from the task.
 
 **Model implications:**
-- `Task` requires a nullable FK `scheduled_milestone → ScheduledMilestone`
-  for the milestone the task is dispatched against. NULL only for ordinary
-  FSM-gated tasks that are not part of an orchestrated publication workflow.
-- `Task` does **not** carry a direct FK to `PublicationTarget`. The previous
-  proposal to add this FK is withdrawn. Target linkage is always via the
-  milestone.
+
+- `Task` requires a nullable FK `scheduled_milestone → 'ScheduledMilestone'`
+  (string forward reference) for the milestone the task is dispatched
+  against. NULL for ordinary FSM-gated tasks not part of an orchestrated
+  publication workflow.
+- `Task` does **not** carry a direct FK to `PublicationTarget`. An earlier
+  proposal to add this FK is withdrawn — see rejected alternative below.
+- `Task` requires a nullable `context_note` TextField for the coordinator's
+  module-specific guidance note (D3). Populated as a Stage 3 side effect;
+  not authored at task creation.
+- `Task.status` uses `ABANDONED` (not `WITHDRAWN`) to align vocabulary with
+  `PublicationTarget`. `Task.status = ABANDONED` means the task itself was
+  explicitly cancelled — for example, because a module was removed from
+  scope. It is independent of the state of the driving `PublicationTarget`,
+  which may remain active.
 - `WorkflowInstance` and `ScheduledMilestone` require a nullable FK
   `originating_task → Task` to preserve the audit trail from document back
   to the task that drove it.
+- `Task` must be defined before `ScheduledMilestone` in `models.py`.
+  `Task.scheduled_milestone` uses a string forward reference
+  `'ScheduledMilestone'`; `ScheduledMilestone.originating_task` may
+  reference `Task` directly.
 
 **`clean()` rule for `scheduled_milestone`:**
 
@@ -150,30 +168,19 @@ def clean(self):
 
 **Rejected alternative — `Task.publication_target` as a direct FK:** an
 earlier proposal added a direct `publication_target` FK to `Task` to make
-the unresolved-obligation state queryable without a JOIN. This was withdrawn
-because the task-first scenario it was designed to accommodate — a task
-dispatched before any `ScheduledMilestone` exists — does not arise in
-practice. The scheduler always generates milestones immediately after scope
-confirmation, before tasks are dispatched. The `ScheduledMilestone` with
-`document = NULL` is the correct and sufficient record of an in-scope but
-uninitiated obligation.
+the unresolved-obligation state queryable without a JOIN, and to represent
+a task-first path where a task is dispatched before any `ScheduledMilestone`
+exists. This was withdrawn on two grounds. First, the task-first scenario
+does not arise in practice: the scheduler always generates milestones
+immediately after scope confirmation (Stage 2), before tasks are dispatched
+(Stage 3). Second, the `ScheduledMilestone` with `document = NULL` is the
+correct and sufficient record of an in-scope but uninitiated obligation —
+it carries the `PublicationTarget` linkage, the deadline arithmetic, and
+the risk flags. A direct FK on `Task` would be redundant from the moment
+of dispatch and would introduce an inconsistency risk if the target linkage
+on the milestone were ever revised.
 
----
-
-### D4 — Downstream work targets `ModuleOutcomeContent`, not `ModuleSpecificationContent`
-
-The unit of work pushed to module convenors in response to a CLO change is
-a new or revised `ModuleOutcomeContent` document, not a full
-`ModuleSpecificationContent` revision.
-
-Rationale: requesting a full module spec revision is the wrong granularity
-when the change is targeted at a single outcome. It obscures the audit trail
-linking the MLO to the CLO that drove it, and imposes unnecessary authoring
-burden on the convenor.
-
-A `ModuleSpecificationContent` revision is triggered later, automatically,
-once all MLO and assessment workflows for the module have reached `Approved`.
-See D7.
+**Prerequisite for:** Stage 3 and Stage 4 implementation.
 
 ---
 
@@ -552,16 +559,20 @@ impact analysis may warrant its own result sub-type or structured sub-model.
 
 ---
 
-### G4 — `AgendaItem` model not specified
+### ~~G4~~ — `AgendaItem` model not specified — **RESOLVED**
 
-The `CommitteeMeeting` model exists as a scheduling input but there is no
-specified model for attaching documents to a meeting agenda. An `AgendaItem`
-model is needed that links a `Document` (or `WorkflowInstance`) to a
-`CommitteeMeeting`, carries agenda order, and records the meeting outcome
-against that item.
+`AgendaItem` is fully specified in `data_models.md` under the Meetings and
+agenda section. The model links a `Document` to a `CommitteeMeeting`, carries
+agenda order, and includes a `notes` field.
 
-**Prerequisite for:** G5, committee stage implementation.
+**Residual gap:** `AgendaItem` does not currently carry an `outcome` field
+for recording the committee's per-item decision. Without the G5 bundle model,
+committee rejection outcomes have no structured home other than
+`WorkflowEvent.metadata` JSON. An `outcome` CharField should be added to
+`AgendaItem` as a housekeeping pass, either alongside G5 resolution or
+independently if G5 remains parked.
 
+**Depends on:** G5 for full resolution of the outcome recording question.
 ---
 
 ### G5 — Explicit submission bundle object not modelled
@@ -633,25 +644,34 @@ replace the open questions previously recorded here.
 
 ---
 
-### G8 — `Task` model fields for `PublicationTarget` linkage not yet specified
+### G8 — RESOLVED: see D3a
 
-D3a introduces two new FKs on `Task` and one on `WorkflowInstance` and
-`ScheduledMilestone`. The `Task` model is not yet fully specified in
-`data_models.md`. The following need resolving before implementation:
+All three sub-questions are now answered:
 
-- What is the full field specification for `Task`, including status
-  `TextChoices` sufficient to distinguish: dispatched-awaiting-response,
-  in-progress (convenor has nominated at least one document), complete
-  (all child milestones resolved), and withdrawn?
-- The `scheduled_milestone` FK on `Task` applies when a task is dispatched
-  against an already-existing `ScheduledMilestone` (Paths 2 and 3). In the
-  task-first path (no pre-existing milestone), this FK is NULL at dispatch
-  and remains NULL — the milestone is created by the convenor's action.
-  This dual-mode behaviour needs to be clearly documented and enforced in
-  `clean()`.
-- When a convenor nominates multiple documents under a single `Task`, the
-  coordinator dashboard must present these as a coherent module-level group.
-  The grouping query relies on `ScheduledMilestone.originating_task`. The
-  display logic for this view needs specifying in `UI_SPEC.md`.
+- **`Task.status` TextChoices** — specified as
+  `PENDING | CLAIMED | IN_PROGRESS | COMPLETED | ABANDONED | SUPERSEDED`.
+  See D3a and the `Task` field table in `data_models.md`.
+- **Dual-mode `scheduled_milestone` FK behaviour** — the milestone always
+  exists before the task is dispatched (task-first path does not arise).
+  The `clean()` rule enforces that `scheduled_milestone.document` is NULL
+  at dispatch time. See D3a.
+- **Coordinator dashboard grouping view** — deferred to `UI_SPEC.md`.
+  The grouping query relies on `ScheduledMilestone.originating_task`; the
+  display logic is a UI concern and does not affect the model definition.
 
-**Prerequisite for:** D3a, Stage 3 and Stage 4 implementation.
+---
+
+### D4 — Downstream work targets `ModuleOutcomeContent`, not `ModuleSpecificationContent`
+
+The unit of work pushed to module convenors in response to a CLO change is
+a new or revised `ModuleOutcomeContent` document, not a full
+`ModuleSpecificationContent` revision.
+
+Rationale: requesting a full module spec revision is the wrong granularity
+when the change is targeted at a single outcome. It obscures the audit trail
+linking the MLO to the CLO that drove it, and imposes unnecessary authoring
+burden on the convenor.
+
+A `ModuleSpecificationContent` revision is triggered later, automatically,
+once all MLO and assessment workflows for the module have reached `Approved`.
+See D7.
