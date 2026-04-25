@@ -245,7 +245,7 @@ not a gate. The coordinator must be able to:
 - **Remove** a module the LLM flagged as needing changes
 
 Both override directions must be supported in the UI and recorded with
-provenance in the data model (see G2).
+provenance in the data model (see G2 - RESOLVED).
 
 ---
 
@@ -525,37 +525,86 @@ affected components can be fully specified.
 
 ---
 
-### G2 — Coordinator scoping decision provenance not modelled
+## G2 — RESOLVED
 
-There is no model currently capturing the per-module scoping decision made
-at the impact analysis review step. The audit trail must record not just
-which modules are in scope but why — LLM recommendation accepted, coordinator
-override added, LLM recommendation rejected.
+### Decision
 
-Candidate location: additional fields on `ScheduledMilestone`:
+Coordinator scoping provenance is recorded on `PublicationScopeItem`
+via the `coordinator_decision` and `coordinator_note` fields. No fields
+are added to `ScheduledMilestone`.
 
-- `scope_origin` — `TextChoices`: `llm_recommended`, `coordinator_added`,
-  `llm_recommended_excluded`
-- `scope_note` — nullable `TextField`
-
-Alternatively these fields could live on the `LLMResult` row if that model
-is restructured per G3.
-
-**Prerequisite for:** D8, D9.
+The relationship between `PublicationScopeItem` and `ScheduledMilestone`
+is one-directional: after the coordinator confirms scope, the backwards
+scheduler reads all `PublicationScopeItem` rows for the target where
+`coordinator_decision` results in in-scope status, and generates
+`ScheduledMilestone` records for those modules. The
+`ScheduledMilestone` does not carry a back-reference to
+`PublicationScopeItem`. Provenance is recoverable via
+`ScheduledMilestone → PublicationTarget → PublicationScopeItem
+(filtered by module)`.
 
 ---
 
-### G3 — `LLMResult` structure insufficient for impact analysis
+## G3 — RESOLVED
 
-`LLMResult` is currently a generic advisory output type. The impact analysis
-use case requires a structured, row-level format — one record per module —
-where each row carries the LLM's coverage classification, explanatory text,
-and a coordinator override state (accepted, rejected, overridden).
+### Decision
 
-A generic `LLMResult` with a blob output JSON is likely insufficient. The
-impact analysis may warrant its own result sub-type or structured sub-model.
+`LLMResult` is retained as the generic advisory output type for all other
+LLM task types. The impact analysis does **not** use `LLMResult` as its
+primary output record.
 
-**Prerequisite for:** D8, D9, G2.
+Instead, `PublicationScopeItem` is the primary record for scoping
+decisions. When the LLM runs, it writes `coverage_class` and
+`llm_explanation` into the existing `PublicationScopeItem` rows and
+records the inference provenance in a `LLMResult` record. The
+`LLMResult` FK on `PublicationScopeItem` is nullable: NULL when the
+LLM has not run; populated when it has. The `LLMResult` record is
+provenance only — it is never the primary object.
+
+### Rationale
+
+The previous design made `ImpactAnalysisResult` a child of `LLMResult`,
+which inverted the correct semantic relationship. The scoping canvas
+exists to support coordinator decision-making; the LLM is one way of
+pre-populating it. Subordinating the canvas to the LLM output record
+would have required a fake empty `LLMResult` when running without an
+LLM — a lie in the audit trail, and an inappropriate coupling in a
+governance system where audit integrity is a primary concern.
+
+### Candidate pool and the scope definition fields
+
+Before any rows can be created — and before the LLM can run — a
+candidate pool of modules must be defined. This is the set of modules
+that could plausibly be affected by the change driving the
+`PublicationTarget`. The candidate pool serves two purposes:
+
+1. It bounds the scope of the LLM inference task.
+2. It populates the coordinator's add-module menu when working on the
+   canvas.
+
+The candidate pool definition is captured as fields on `PublicationTarget`
+directly (no separate container model). Three fields are added:
+
+- `scope_anchor` — `TextChoices`: `DEPARTMENT | SCHOOL | FACULTY | MANUAL`.
+  The organisational unit rule used to derive the candidate pool, or
+  `MANUAL` if the coordinator built the pool by hand.
+- `scope_anchor_object_id` — nullable PositiveIntegerField. The PK of the
+  relevant `DepartmentIdentifier`, `SchoolIdentifier`, or `FacultyIdentifier`
+  when `scope_anchor` is not `MANUAL`. NULL when `MANUAL`.
+- `scope_anchor_content_type` — nullable FK → ContentType. The
+  ContentType of the anchor object. Together with `scope_anchor_object_id`
+  forms a GenericForeignKey. NULL when `MANUAL`.
+
+The candidate pool query is: all `ModuleIdentifier` records whose owning
+organisational unit matches the anchor (or, for `MANUAL`, the set of
+modules explicitly added as `PublicationScopeItem` rows by the
+coordinator). The query is executed at the time the coordinator opens the
+scoping canvas, not materialised at target creation.
+
+> **Note:** `scope_anchor` and the ContentType/object_id pair are only
+> relevant for `PublicationTarget` records whose `target_document_type`
+> involves downstream module impact (currently: `COURSE_OUTCOME`). They
+> are NULL for all other target types. Enforced in `clean()`.
 
 ---
 
@@ -565,14 +614,12 @@ impact analysis may warrant its own result sub-type or structured sub-model.
 agenda section. The model links a `Document` to a `CommitteeMeeting`, carries
 agenda order, and includes a `notes` field.
 
-**Residual gap:** `AgendaItem` does not currently carry an `outcome` field
-for recording the committee's per-item decision. Without the G5 bundle model,
-committee rejection outcomes have no structured home other than
-`WorkflowEvent.metadata` JSON. An `outcome` CharField should be added to
-`AgendaItem` as a housekeeping pass, either alongside G5 resolution or
-independently if G5 remains parked.
+`AgendaItem` now carries an `outcome` field for recording the committee's
+per-item decision. Without the G5 bundle model, committee rejection outcomes
+otherwise have no structured home other than `WorkflowEvent.metadata` JSON.
 
 **Depends on:** G5 for full resolution of the outcome recording question.
+
 ---
 
 ### G5 — Explicit submission bundle object not modelled

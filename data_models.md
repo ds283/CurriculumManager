@@ -32,13 +32,13 @@ multiple roles within a single tenant (e.g. it's possible to have
 `convenor`, `reviewer`, and possibly a combination of  `*_tlc` or
 `*_tlc_chair` roles).
 
-| Field       | Type         | Notes                                                                                                                                                                                                                                                                                                                              |
-|-------------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`        | PK           |                                                                                                                                                                                                                                                                                                                                    |
-| `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                                 |
-| `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                                    |
-| `role`      | CharField    | `TextChoices`: `convenor`, `reviewer`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `course_coordinator` |
-| `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                                    |
+| Field       | Type         | Notes                                                                                                                                                                                                                                                                                                                                                     |
+|-------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`        | PK           |                                                                                                                                                                                                                                                                                                                                                           |
+| `user`      | FK → User    | Global Django user                                                                                                                                                                                                                                                                                                                                        |
+| `tenant`    | FK → Tenant  |                                                                                                                                                                                                                                                                                                                                                           |
+| `role`      | CharField    | `TextChoices`: `convenor`, `reviewer`, `admin`, `department_tlc`, `department_tlc_chair`, `school_tlc`, `school_tlc_chair`, `faculty_tlc`, `faculty_tlc_chair`, `manager`, `external_examiner`, `review_coordinator`, `review_lead`, `accreditation_coordinator`, `accreditation_lead`, `curriculum_officer`, `course_coordinator`, `publication_manager` |
+| `is_active` | BooleanField |                                                                                                                                                                                                                                                                                                                                                           |
 
 **Constraints:** `unique_together = (user, role, tenant)`
 
@@ -1094,29 +1094,42 @@ All scheduled milestones are grouped under this entity.
 Every change to `target_date` is recorded in `PublicationTargetDateChange`.
 `schedule_status` is the only field written by the scheduler.
 
-| Field                  | Type                             | Notes                                                                                                                                            |
-|------------------------|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                   | PK                               |                                                                                                                                                  |
-| `tenant`               | FK → Tenant                      |                                                                                                                                                  |
-| `label`                | CharField                        | e.g. `AY 2029/30 course review`                                                                                                                  |
-| `description`          | TextField                        |                                                                                                                                                  |
-| `target_document_type` | CharField                        | The terminal document type                                                                                                                       |
-| `target_state`         | CharField                        | The required terminal state                                                                                                                      |
-| `target_date`          | DateField                        | Coordinator-owned. Never written by the scheduler.                                                                                               |
-| `date_confidence`      | CharField (TextChoices)          | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                       |
-| `owner`                | FK → User                        | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                         |
-| `course`               | FK → CourseIdentifier (nullable) | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                             |
-| `schedule_status`      | CharField (TextChoices)          | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`. |
-| `abandoned_rationale`  | TextField (blank)                | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.            |
-| `created_at`           | DateTimeField                    | auto                                                                                                                                             |
+| Field                       | Type                              | Notes                                                                                                                                            |
+|-----------------------------|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                        | PK                                |                                                                                                                                                  |
+| `tenant`                    | FK → Tenant                       |                                                                                                                                                  |
+| `label`                     | CharField                         | e.g. `AY 2029/30 course review`                                                                                                                  |
+| `description`               | TextField                         |                                                                                                                                                  |
+| `target_document_type`      | CharField                         | The terminal document type                                                                                                                       |
+| `target_state`              | CharField                         | The required terminal state                                                                                                                      |
+| `target_date`               | DateField                         | Coordinator-owned. Never written by the scheduler.                                                                                               |
+| `date_confidence`           | CharField (TextChoices)           | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                       |
+| `owner`                     | FK → User                         | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                         |
+| `course`                    | FK → CourseIdentifier (nullable)  | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                             |
+| `schedule_status`           | CharField (TextChoices)           | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`. |
+| `scope_anchor`              | CharField (TextChoices, nullable) | `DEPARTMENT \| SCHOOL \| FACULTY \| MANUAL`. NULL for non-impact target types.                                                                   |
+| `scope_anchor_content_type` | FK → ContentType (nullable)       | ContentType of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                        |
+| `scope_anchor_object_id`    | PositiveIntegerField (nullable)   | PK of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                 |
+| `abandoned_rationale`       | TextField (blank)                 | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.            |
+| `created_at`                | DateTimeField                     | auto                                                                                                                                             |
 
-**Computed property:** `is_active` returns `True` when `schedule_status` is not
+**Computed property:**
+
+- `is_active` returns `True` when `schedule_status` is not
 in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
+- `scope_anchor_object` — GenericForeignKey over
+  `scope_anchor_content_type` and `scope_anchor_object_id`.
 
 **Constraints:**
+
 - If `course` is not null, `tenant` must equal `course.tenant`. Enforced in `clean()`.
 - `date_confidence` may only transition toward `CONFIRMED`. Enforced in `clean()`.
 - `abandoned_rationale` must be non-empty when `schedule_status = ABANDONED`. Enforced in `clean()`.
+- `scope_anchor_content_type` and `scope_anchor_object_id` must both be
+  set or both NULL.
+- When `scope_anchor` is not NULL and not `MANUAL`, both
+  `scope_anchor_content_type` and `scope_anchor_object_id` must be set.
+- When `scope_anchor = MANUAL` or NULL, both must be NULL.
 
 ---
 
@@ -1125,18 +1138,143 @@ in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
 Audited log of every change to `PublicationTarget.target_date`. One record
 per change. Never updated or deleted.
 
-| Field                | Type                   | Notes                                              |
-|----------------------|------------------------|----------------------------------------------------|
-| `id`                 | PK                     |                                                    |
-| `publication_target` | FK → PublicationTarget | `related_name='date_changes'`                      |
-| `previous_date`      | DateField              |                                                    |
-| `new_date`           | DateField              |                                                    |
-| `changed_by`         | FK → User              |                                                    |
-| `changed_at`         | DateTimeField          | auto                                               |
-| `rationale`          | TextField (blank)      | Optional — populated when confirming a scheduler advisory |
-| `advisory`           | FK → SchedulerAdvisory (nullable) | The advisory that prompted this change, if any |
+| Field                | Type                              | Notes                                                     |
+|----------------------|-----------------------------------|-----------------------------------------------------------|
+| `id`                 | PK                                |                                                           |
+| `publication_target` | FK → PublicationTarget            | `related_name='date_changes'`                             |
+| `previous_date`      | DateField                         |                                                           |
+| `new_date`           | DateField                         |                                                           |
+| `changed_by`         | FK → User                         |                                                           |
+| `changed_at`         | DateTimeField                     | auto                                                      |
+| `rationale`          | TextField (blank)                 | Optional — populated when confirming a scheduler advisory |
+| `advisory`           | FK → SchedulerAdvisory (nullable) | The advisory that prompted this change, if any            |
 
 **Indexes:** `(publication_target, changed_at)`
+
+---
+
+### `PublicationScopeItem` — model specification
+
+#### Core framing
+
+`PublicationScopeItem` is the coordinator's scoping canvas for a
+`PublicationTarget`. It is a first-class model in the scheduling layer,
+not a sub-type or output of the LLM layer. One row exists per candidate
+module, regardless of whether an LLM has run. The LLM, when enabled,
+populates the `coverage_class` and `llm_explanation` fields on existing
+rows and sets `populated_by = LLM`. When the LLM is disabled, those
+fields remain blank and `populated_by = COORDINATOR`, and the coordinator
+makes the scoping decision without automated classification.
+
+This design means the system is fully operable without an LLM. Enabling
+the LLM is an enrichment step that assists but does not gate the
+coordinator's workflow.
+
+#### LLM-disabled operation
+
+When the LLM feature flag is off:
+
+1. The coordinator opens the scoping canvas. The system queries the
+   candidate pool from the `scope_anchor` rule and creates
+   `PublicationScopeItem` rows with `populated_by = COORDINATOR`,
+   `coverage_class = NULL`, `llm_result = NULL`.
+2. The coordinator reviews each row and sets `coordinator_decision`
+   directly, optionally adding a `coordinator_note`.
+3. The coordinator may add rows for modules outside the candidate pool
+   using the same add-module action as in the LLM-enabled path.
+4. Once all rows are decided, the D8 gate is satisfied and the
+   backwards scheduler runs.
+
+No `LLMResult` record is created. No fake records of any kind are
+required.
+
+#### LLM-enabled operation
+
+When the LLM feature flag is on:
+
+1. The coordinator opens the scoping canvas. The system creates
+   `PublicationScopeItem` rows as above (`populated_by = COORDINATOR`,
+   `coverage_class = NULL`), then enqueues the Celery inference task.
+2. The inference task runs, writes `coverage_class` and `llm_explanation`
+   into each row, sets `populated_by = LLM`, creates a single `LLMResult`
+   record for the run, and sets `llm_result` on each row to that record.
+3. The coordinator reviews the pre-populated canvas, overrides as needed,
+   adds any missing modules, and sets `coordinator_decision` on each row.
+4. Once all rows are decided, the D8 gate is satisfied and the
+   backwards scheduler runs.
+
+#### Field table
+
+One row per candidate module per `PublicationTarget`. Created either
+by the system when the coordinator opens the scoping canvas (populated
+from the candidate pool query), or manually by the coordinator adding
+a module not in the candidate pool.
+
+| Field                  | Type                              | Notes                                                                                                                              |
+|------------------------|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                   | PK                                |                                                                                                                                    |
+| `tenant`               | FK → Tenant                       |                                                                                                                                    |
+| `publication_target`   | FK → PublicationTarget            | `related_name='scope_items'`                                                                                                       |
+| `module`               | FK → ModuleIdentifier             |                                                                                                                                    |
+| `populated_by`         | CharField (TextChoices)           | `LLM \| COORDINATOR`. Records which agent created or last substantively updated this row.                                          |
+| `coverage_class`       | CharField (TextChoices, nullable) | `FULLY_COVERED \| PARTIALLY_COVERED \| NOT_COVERED \| INDETERMINATE`. NULL until the LLM runs or the coordinator sets it manually. |
+| `llm_explanation`      | TextField (blank=True)            | LLM-authored rationale for the classification. Not editable by the coordinator. Empty when `populated_by = COORDINATOR`.           |
+| `llm_result`           | FK → LLMResult (nullable)         | The inference run that populated `coverage_class` and `llm_explanation`. NULL when `populated_by = COORDINATOR`.                   |
+| `coordinator_decision` | CharField (TextChoices)           | `PENDING \| IN_SCOPE \| OUT_OF_SCOPE`. Default `PENDING`.                                                                          |
+| `coordinator_note`     | TextField (blank=True)            | Coordinator's free-text note recorded at the review step. Always editable.                                                         |
+| `decided_by`           | FK → User (nullable)              | Set when `coordinator_decision` leaves `PENDING`.                                                                                  |
+| `decided_at`           | DateTimeField (nullable)          | Set when `coordinator_decision` leaves `PENDING`.                                                                                  |
+
+**`populated_by` vocabulary:**
+
+| Value         | Meaning                                                                                                                                                     |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM`         | Row was created and classified by the LLM inference task. `coverage_class` and `llm_explanation` are populated; `llm_result` is set.                        |
+| `COORDINATOR` | Row was created manually by the coordinator, or the LLM is disabled. `coverage_class` may be NULL or set by the coordinator directly. `llm_result` is NULL. |
+
+**`coverage_class` vocabulary:**
+
+| Value               | Meaning                                                                             |
+|---------------------|-------------------------------------------------------------------------------------|
+| `FULLY_COVERED`     | Existing MLO text already satisfies the CLO; no revision likely required.           |
+| `PARTIALLY_COVERED` | MLO text partially addresses the CLO; revision is probably needed.                  |
+| `NOT_COVERED`       | No existing MLO addresses the CLO; new outcome or significant revision required.    |
+| `INDETERMINATE`     | Classification is uncertain. Coordinator must make the scoping decision explicitly. |
+
+**`coordinator_decision` vocabulary:**
+
+| Value          | Meaning                                                                                                     |
+|----------------|-------------------------------------------------------------------------------------------------------------|
+| `PENDING`      | Coordinator has not yet reviewed this row.                                                                  |
+| `IN_SCOPE`     | Module is confirmed in scope. The backwards scheduler will generate a `ScheduledMilestone` for this module. |
+| `OUT_OF_SCOPE` | Module is confirmed out of scope. No milestone will be generated.                                           |
+
+> **Simplification note:** The previous five-value vocabulary
+> (`ACCEPTED`, `REJECTED`, `OVERRIDDEN_IN`, `OVERRIDDEN_OUT`) has been
+> collapsed to three values. The override direction (whether the
+> coordinator agreed or disagreed with the LLM) is recoverable at query
+> time by comparing `coordinator_decision` with `coverage_class` — a
+> module with `coverage_class = NOT_COVERED` and
+> `coordinator_decision = OUT_OF_SCOPE` is an LLM-recommended inclusion
+> that was overridden out, and so on. The audit trail is fully preserved
+> without encoding the override logic into the vocabulary. The
+> `coordinator_note` field carries the coordinator's rationale in either
+> case.
+
+**Constraints:**
+
+- `tenant` must agree with `publication_target.tenant`. Enforced in `clean()`.
+- `tenant` must agree with `module.tenant`. Enforced in `clean()`.
+- `unique_together = (publication_target, module)` — one row per module per target.
+- `decided_by` and `decided_at` must both be set or both NULL. Enforced in `clean()`.
+- When `coordinator_decision` leaves `PENDING`, `decided_by` and `decided_at`
+  must be set. Enforced in `clean()`.
+- `llm_result` must be NULL when `populated_by = COORDINATOR`. Enforced in `clean()`.
+- `llm_explanation` must be blank when `populated_by = COORDINATOR`. Enforced in `clean()`.
+
+**Indexes:** `(publication_target,)`, `(module,)`,
+`(publication_target, coordinator_decision)` — supports the D8 gate
+query checking whether all rows for a target have been decided.
 
 ---
 
@@ -1325,6 +1463,12 @@ surfaced in the UI, and always labelled with provenance.
 | `reviewed_at`  | DateTimeField (nullable) |                                                                                                |
 | `accepted`     | BooleanField (nullable)  | NULL = not yet reviewed                                                                        |
 
+**Impact analysis:** for `task_type = impact_analysis`, `LLMResult` is
+provenance only. The primary scoping record is `PublicationScopeItem`;
+each `PublicationScopeItem` row carries a nullable FK to the `LLMResult`
+record for the inference run that populated it. Do not query `LLMResult`
+directly for impact analysis output — query `PublicationScopeItem` instead.
+
 ---
 
 ## Meetings and agenda
@@ -1375,13 +1519,15 @@ includes this meeting.
 Links a document to a meeting agenda, regardless of document type.
 Demonstrates the cross-cutting query benefit of the envelope model.
 
-| Field      | Type                  | Notes                         |
-|------------|-----------------------|-------------------------------|
-| `id`       | PK                    |                               |
-| `meeting`  | FK → CommitteeMeeting | `related_name='agenda_items'` |
-| `document` | FK → Document         | `related_name='agenda_items'` |
-| `order`    | PositiveIntegerField  |                               |
-| `notes`    | TextField             |                               |
+| Field          | Type                    | Notes                                                                       |
+|----------------|-------------------------|-----------------------------------------------------------------------------|
+| `id`           | PK                      |                                                                             |
+| `meeting`      | FK → CommitteeMeeting   | `related_name='agenda_items'`                                               |
+| `document`     | FK → Document           | `related_name='agenda_items'`                                               |
+| `order`        | PositiveIntegerField    |                                                                             |
+| `notes`        | TextField (blank=True)  |                                                                             |
+| `outcome`      | CharField (TextChoices) | `PENDING \| APPROVED \| REJECTED \| DEFERRED`. Default `PENDING`.           |
+| `outcome_note` | TextField (blank=True)  | Committee's reasons for rejection or deferral. Populated after the meeting. |
 
 **Constraints:** `unique_together = (meeting, document)`
 
