@@ -354,8 +354,7 @@ transition. Nothing in the FSM itself enforces or records eligibility —
 it is computed on demand by the scheduling UI and the committee attachment
 logic.
 
-**Depends on:** D10 (bundle gate), G4 (`AgendaItem` not yet modelled),
-G5 (bundle object not yet modelled).
+**Depends on:** D10 (bundle gate), G5 (bundle object not yet modelled).
 
 ---
 
