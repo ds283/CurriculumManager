@@ -3,12 +3,13 @@
 **Read this file in full before writing any code.**
 All architectural decisions here take precedence over inferred conventions.
 
-Part 1 (Sections 1–6) drives immediate skeleton generation.
-Part 2 (Sections 7–9) describes planned subsystems — design for
-compatibility but do not generate implementation code for those sections.
+The sections [Generate now](#part-1--generate-now) drive immediate skeleton
+generation. The sections under [Planned subsystems](#part-2--planned-subsystems)
+describe planned subsystems — design for compatibility but do not generate
+implementation code for those sections.
 
 **Note:** The system uses internal Sussex vocabulary to refer to curriculum
-entities. In particular, 'course' is used to refer to programmes of student,
+entities. In particular, 'course' is used to refer to programmes of study,
 in alignment with the Sussex 2025/26 Academic Framework. This is synonymous
 with 'programme' used more widely in the sector.
 
@@ -20,24 +21,28 @@ with 'programme' used more widely in the sector.
 
 ## 1. Technology stack
 
-| Component      | Choice             | Notes                                                 |
-|----------------|--------------------|-------------------------------------------------------|
-| Language       | Python 3.12+       |                                                       |
-| Framework      | Django 5.x         | Not Flask. Use integrated migrations, admin, ORM.     |
-| Database       | PostgreSQL 16+     | jsonb, recursive CTEs, transactional DDL required.    |
-| Task queue     | Celery 5.x         | Redis broker. Named queues — see §6.                  |
-| Cache / broker | Redis              |                                                       |
-| Auth           | Okta SSO           | django-allauth with Okta provider. Custom middleware. |
-| Frontend       | HTMX + Bootstrap 5 | No React SPA. Django templates throughout.            |
-| WSGI           | Waitress           |                                                       |
+| Component      | Choice             | Notes                                                    |
+|----------------|--------------------|----------------------------------------------------------|
+| Language       | Python 3.12+       |                                                          |
+| Framework      | Django 5.x         | Not Flask. Use integrated migrations, admin, ORM.        |
+| Database       | PostgreSQL 16+     | jsonb, recursive CTEs, transactional DDL required.       |
+| Task queue     | Celery 5.x         | Redis broker. Named queues — see [Celery configuration]. |
+| Cache / broker | Redis              |                                                          |
+| Auth           | Okta SSO           | django-allauth with Okta provider. Custom middleware.    |
+| Frontend       | HTMX + Bootstrap 5 | No React SPA. Django templates throughout.               |
+| WSGI           | Waitress           |                                                          |
 
 Key packages: `networkx` (graph algorithms), `pydantic` (JSON schema
 validation), `ollama` Python SDK (deferred), `django-guardian`
-(object-level permissions — install but do not configure until §6 is
-in place).
+(object-level permissions — install but do not configure until the
+[Django application structure] section is in place).
 
 Do **not** use `django-fsm` or `django-simple-history`. Both are
 implemented custom.
+
+[Celery configuration]: #7-celery-configuration
+
+[Django application structure]: #6-django-application-structure
 
 ---
 
@@ -83,7 +88,6 @@ class TenantScopedManager(models.Manager):
 User records are global (`AUTH_USER_MODEL`). Roles are per-tenant.
 
 ```python
-
 class TenantMembership(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE)
@@ -117,7 +121,7 @@ class Document(models.Model):
         TEACHING_ACTIVITY = 'teaching_activity', 'Teaching Activity'
         REACCREDITATION = 'reaccreditation', 'Reaccreditation'
         MODULE_REQUISITE = 'module_requisite', 'Module Requisite'  # deferred — governance model TBD with curriculum team
-        CURRICULUM_REVIEW = 'curriculum_review', 'Curriculum Review'  # deferred — follows same pattern as REACCREDITATION        
+        CURRICULUM_REVIEW = 'curriculum_review', 'Curriculum Review'  # deferred — follows same pattern as REACCREDITATION
 
     # Add new types here alongside their content model
 
@@ -178,8 +182,8 @@ doc = Document.objects.select_related('module_spec').get(pk=pk)
 content = doc.module_spec
 ```
 
-**Extension pattern** — see the Extension checklist at the end of this
-document for the full step-by-step procedure.
+**Extension pattern** — see the [Extension checklist](#extension-checklist)
+at the end of this document for the full step-by-step procedure.
 
 ### 3.3 Workflow instance and audit trail
 
@@ -535,7 +539,8 @@ are required for any document type anchored to a `ModuleIdentifier`.
 - States are Python enums using `auto()` — integer values never appear
   in application code. State is stored and retrieved as `enum.name`.
 - Transition graph is a dict-of-dicts in code, not the database.
-- Document dependencies are also in code — see §7.2.
+- Document dependencies are also in code — see
+  [Dependencies in code](#82-dependencies-in-code).
 - All transition logic executes inside `transaction.atomic()`: state
   change, audit event, task supersession, and task creation are atomic.
 
@@ -553,7 +558,7 @@ class Transition:
     side_effects: list[Callable] = field(default_factory=list)
     generates_milestone: bool = False  # True on terminal approval transitions
     milestone_label: str = ''
-    committee: str | None = None  # committee slug if gated on a meeting
+    committee: str | None = None  # committee role slug — see Committee configuration
     estimated_days: int | None = None  # processing time if not committee-gated
     is_rejection_branch: bool = False  # marks non-primary paths
 ```
@@ -601,7 +606,7 @@ class ModuleSpecFSM:
                 side_effects=[publish_asset_version],
                 generates_milestone=True,
                 milestone_label='Module specification approved',
-                committee='teaching_and_learning',
+                committee='curriculum_approval',
             ),
             'refer_back': Transition(
                 target=ModuleSpecState.DRAFT,
@@ -677,7 +682,7 @@ upward imports.
 |              | `ModuleIdentifier`, `AssessmentSlotIdentifier`,                  |
 |              | `FHEQLevel`, `CommitteeIdentifier`, `AccreditingBodyIdentifier`, |
 |              | `CourseAccreditationScope`, `RegulatoryDocument`,                |
-|              | `PeriodIdentifier`, `PeriodWeekIdentifier`                       |
+|              | `PeriodIdentifier`, `PeriodWeekIdentifier`, `CommitteeRole`      |
 | `documents`  | `Document` envelope, all `[Type]Content` content models,         |
 |              | `documents/registry.py` (type → content model + relation name    |
 |              | mapping, `resolve_module_identifier`), document-type FSM         |
@@ -822,7 +827,7 @@ class TenantTask(celery.Task):
 
 ## Part 2 — Planned subsystems
 
-Sections 7–9 describe subsystems built in later phases. Do not generate
+These sections describe subsystems built in later phases. Do not generate
 implementation code. Ensure referenced fields exist on core models.
 
 ---
@@ -1142,6 +1147,105 @@ architectural constraint.
 
 Failure handling: retry with exponential backoff (3 attempts).
 Absence of an LLM result never blocks a workflow transition.
+
+---
+
+## 11. Committee configuration
+
+### 11.1 Principle
+
+FSM transitions that require committee approval reference a **committee
+role slug** rather than a `CommitteeIdentifier` slug directly. A
+per-tenant configuration table (`CommitteeRole`) maps committee role
+slugs to `CommitteeIdentifier` rows. FSM code never changes when
+institutional committee structures are reorganised; only the mapping
+changes.
+
+### 11.2 Committee roles
+
+Two committee roles are defined for the current faculty deployment:
+
+| Role slug                 | Current committee                     | Scope                                                                                                                           |
+|---------------------------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `curriculum_approval`     | Teaching & Learning Committee (`tlc`) | Substantive curriculum change: new or revised learning outcomes, module specifications, assessment changes, programme documents |
+| `implementation_approval` | Board of Studies (`bos`)              | Implementation-level sign-off: teaching activity patterns, scheduling, minor operational changes                                |
+
+These roles are avatars for their current committees. If a faculty-level
+committee is introduced between `bos` and `tlc`, a new role slug is
+added and the mapping updated; no FSM code changes.
+
+### 11.3 Data model
+
+`CommitteeRole` lives in the `registry` app alongside `CommitteeIdentifier`.
+
+```python
+class CommitteeRole(models.Model):
+    """
+    Maps a stable role slug to a CommitteeIdentifier for a given tenant.
+    FSM transition dataclasses reference role slugs; runtime resolution
+    uses this table.
+    """
+    tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT)
+    role_slug = models.CharField(max_length=50)  # e.g. 'curriculum_approval'
+    committee = models.ForeignKey(
+        CommitteeIdentifier,
+        on_delete=models.PROTECT,
+        related_name='role_mappings',
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = [('tenant', 'role_slug')]
+```
+
+Populated via fixture on tenant initialisation. One row per role slug
+per tenant.
+
+### 11.4 Runtime resolution
+
+```python
+def resolve_committee(tenant, role_slug) -> CommitteeIdentifier:
+    return CommitteeRole.objects.select_related('committee').get(
+        tenant=tenant, role_slug=role_slug
+    ).committee
+```
+
+Cache this per-tenant at request time if committee resolution appears
+on hot paths. Do not cache across requests — committee reassignment
+must take effect immediately.
+
+### 11.5 Startup validation
+
+`AppConfig.ready()` validates that every committee role slug referenced
+in any registered FSM exists in `CommitteeRole` for all active tenants,
+failing loudly at boot rather than silently at runtime.
+
+```python
+def validate_committee_roles():
+    for fsm in registered_fsms():
+        for transitions in fsm.TRANSITIONS.values():
+            for transition in transitions.values():
+                if transition.committee:
+                    missing = [
+                        t.slug for t in Tenant.objects.filter(is_active=True)
+                        if not CommitteeRole.objects.filter(
+                            tenant=t, role_slug=transition.committee
+                        ).exists()
+                    ]
+                    if missing:
+                        raise ImproperlyConfigured(
+                            f"Committee role '{transition.committee}' not "
+                            f"configured for tenants: {missing}"
+                        )
+```
+
+### 11.6 Multi-tenant extension note
+
+For the current single-faculty deployment, both role slugs resolve to
+the same committee for all tenants. In a multi-tenant deployment, each
+tenant configures its own mapping independently — a different institution
+may route `curriculum_approval` to its own senate-level body without
+any FSM code change.
 
 ---
 
