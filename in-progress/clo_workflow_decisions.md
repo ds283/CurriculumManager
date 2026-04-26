@@ -356,6 +356,7 @@ logic.
 
 **Previously depended on:** D10 (bundle gate — resolved), G5 (resolved,
 see above). D15 is now unblocked.
+
 ---
 
 ### D16 — FSM states distinguish `APPROVED` from `PUBLISHED`
@@ -397,7 +398,7 @@ inconsistent. Atomicity eliminates that risk.
 
 ---
 
-### D18 — `PublicationTarget` carries `effective_from` and `scheduled_task_id`
+### D18 — `PublicationTarget` carries `effective_from` and `publication_task_id`
 
 Two new fields are added to `PublicationTarget`:
 
@@ -406,7 +407,7 @@ Two new fields are added to `PublicationTarget`:
   all final approvals are confirmed. This value is used as `valid_from` on all
   `AssetVersion` records created by the publication transaction.
 
-- `scheduled_task_id` — `CharField (nullable, max_length=255)`. The Celery task
+- `publication_task_id` — `CharField (nullable, max_length=255)`. The Celery task
   ID of the pending publication task. Stored so the task can be revoked if
   `effective_from` is revised before it fires.
 
@@ -416,7 +417,7 @@ Setting or revising `effective_from` is an audited action. It must produce a
 
 When `effective_from` is set, the system schedules the Celery publication task
 using `apply_async(eta=effective_from)` and stores the returned task ID in
-`scheduled_task_id`. Both the field write and the task scheduling must occur
+`publication_task_id`. Both the field write and the task scheduling must occur
 within the same `transaction.atomic()` block using Celery's
 `task_always_eager=False` and the `on_commit` hook, so that the task is only
 enqueued if the database transaction commits successfully.
@@ -511,7 +512,7 @@ allows both writes to occur within a single `transaction.atomic()` block via
 Django's `on_commit` hook. Redis with AOF persistence does not provide this
 transactional guarantee.
 
-The `scheduled_task_id` stored on `PublicationTarget` references the
+The `publication_task_id` stored on `PublicationTarget` references the
 `django-celery-beat` periodic task entry, allowing it to be deleted (revoked)
 if `effective_from` is revised before the task fires.
 
@@ -648,15 +649,15 @@ attribution is preserved across `PublicationTarget` rescoping because
 `CommitteeFeedbackItem` belongs to the meeting and the submission event,
 not to the target. See `data_models.md`.
 
-**Covering document:** `PublicationTarget` gains a nullable
-`cover_note` FK to a `Document` of the new lightweight type
-`submission_cover_note` (`classification=INTERNAL`). This document is
-versioned via the standard `AssetVersion` machinery and has a
-coordinator-only two-state FSM (`DRAFT → SUBMITTED`). Attachment of the
-target to a `CommitteeMeeting` as an `AgendaItem` is gated on the cover
-note having reached `SUBMITTED`. The cover note persists across TLC
-cycles and receives revisions on resubmission; the committee can inspect
-earlier versions. See `document_models.md`.
+**Covering document:** `PublicationTarget` carries cover notes via the
+`PublicationTargetCoverNote` junction model (one record per target per committee
+role). Each cover note is a `Document` of type `submission_cover_note`
+(`classification=INTERNAL`), versioned via the standard `AssetVersion` machinery,
+with a coordinator-only two-state FSM (`DRAFT → SUBMITTED`). Attachment of the
+target to a `CommitteeMeeting` as an `AgendaItem` is gated on a `SUBMITTED` cover
+note existing for the relevant committee role. Cover notes persist across same-committee
+resubmission cycles and receive revisions; the committee can inspect earlier versions.
+See `data_models.md` and G8.
 
 #### Rationale for rejecting `SubmissionBundle`
 
@@ -749,20 +750,117 @@ replace the open questions previously recorded here.
 
 ---
 
-### G8 — RESOLVED: see D3a
+### G8 — Cover note scope: per-target vs per-committee-role
 
-All three sub-questions are now answered:
+#### Problem
 
-- **`Task.status` TextChoices** — specified as
-  `PENDING | CLAIMED | IN_PROGRESS | COMPLETED | ABANDONED | SUPERSEDED`.
-  See D3a and the `Task` field table in `data_models.md`.
-- **Dual-mode `scheduled_milestone` FK behaviour** — the milestone always
-  exists before the task is dispatched (task-first path does not arise).
-  The `clean()` rule enforces that `scheduled_milestone.document` is NULL
-  at dispatch time. See D3a.
-- **Coordinator dashboard grouping view** — deferred to `UI_SPEC.md`.
-  The grouping query relies on `ScheduledMilestone.originating_task`; the
-  display logic is a UI concern and does not affect the model definition.
+The original design places a single nullable `cover_note` FK on
+`PublicationTarget`, pointing to a versioned `Document` of type
+`submission_cover_note`. The versioning rationale was that repeat submissions to
+the same committee (TLC reject-and-resubmit cycles) produce revised versions of
+the same cover note document, giving the committee visibility of how the
+framing has evolved.
+
+This works correctly for the single-committee resubmission case but does not
+extend to multi-committee escalation pathways. A workflow bundle submitted
+through a full approvals chain — departmental TLC → Board of Studies → Faculty
+T&L → Senate — requires a qualitatively different cover note at each stage:
+
+- **TLC** — pedagogic rationale; why the curriculum change is educationally
+  sound and consistent with programme aims
+- **BoS** — operational framing; resource implications, scheduling impact,
+  implementation timeline
+- **Faculty T&L / Senate** — strategic framing; institutional risk, regulatory
+  compliance (OfS), PSRB implications, fit with institutional strategy
+
+These are not revisions of a single document. They are distinct authoring acts
+addressed to distinct institutional readerships. Forcing them into a single
+versioned document conflates what should be separate. Adding a faculty or senate
+escalation path under the current design would produce a document whose version
+history interleaves TLC resubmissions with entirely different committee
+framings, with no structural way to distinguish them.
+
+#### Options considered
+
+**Option A — Separate cover note per committee role (adopted)**
+
+Replace the `PublicationTarget.cover_note` FK with a junction model
+`PublicationTargetCoverNote` carrying:
+
+- `publication_target` → FK → `PublicationTarget`
+- `committee_role` → FK → `CommitteeRole`
+- `document` → FK → `Document` (`submission_cover_note`)
+- `unique_together = (publication_target, committee_role)`
+
+The `AgendaItem` creation gate is updated: rather than asserting that
+`publication_target.cover_note` is `SUBMITTED`, it resolves the `CommitteeRole`
+for the target meeting's committee and asserts that a
+`PublicationTargetCoverNote` record exists for that role whose document is
+`SUBMITTED`.
+
+Resubmission to the same committee continues to operate by revising the
+existing document. Escalation to a higher committee creates a new
+`PublicationTargetCoverNote` record for the new role, authored independently.
+
+The `CommitteeRole` indirection — already established in the design for FSM
+transition configuration — is preserved. Cover note authoring is anchored to
+role slugs, not to `CommitteeIdentifier` directly; if a faculty-level committee
+is introduced and mapped to a new role slug, no schema changes are required on
+`PublicationTargetCoverNote`.
+
+**Option B — Single document with per-committee-role body fields (rejected)**
+
+Extend `SubmissionCoverNoteContent` with separate body fields per role (e.g.
+`tlc_body`, `bos_body`). Each committee sees only the relevant field.
+
+Rejected because the number of fields scales with the number of committee
+roles, and adding a new role requires a schema migration on the content model.
+This breaks the separation between committee configuration (a data concern) and
+document structure (a schema concern). Independent versioning of per-role bodies
+is not possible. Structurally wrong: what are genuinely separate documents
+should not be sections of one document.
+
+**Option C — Cover note per `AgendaItem` (rejected)**
+
+Attach a cover note directly to `AgendaItem` rather than to
+`PublicationTarget`.
+
+Rejected because it loses continuity across resubmissions to the same
+committee. When a bundle is rejected by TLC and a new `AgendaItem` is created
+for resubmission, there is no automatic link back to the previous cover note;
+the coordinator has no starting point and version history across submissions is
+broken. It also imposes authoring overhead on the common case (most bundles
+never escalate beyond TLC and BoS) for the benefit of the uncommon escalation
+path.
+
+#### Decision
+
+Adopt Option A. Make the following changes to the design:
+
+**`data_models.md`**
+
+- Remove `cover_note` from the `PublicationTarget` field table and the
+  associated integrity note and gate description.
+- Add `PublicationTargetCoverNote` as a new model in the scheduling layer
+  (alongside `PublicationTarget`), with the field specification below.
+- Update the `AgendaItem` gate description to reference
+  `PublicationTargetCoverNote` rather than `PublicationTarget.cover_note`.
+
+**`document_models.md`**
+
+- Update the `SubmissionCoverNoteContent` preamble: replace "One cover note
+  document per `PublicationTarget`" with "One cover note document per
+  `PublicationTarget` per committee role. Each role on the approvals pathway
+  is authored independently."
+- Update the reverse navigation note: `PublicationTargetCoverNote.document`
+  is the FK; the `related_name` on `Document` gives the owning
+  `PublicationTargetCoverNote` record.
+
+**`clo_workflow_decisions.md` (G5 — covering document section)**
+
+- Update the covering document description to reflect that
+  `PublicationTarget` no longer carries a direct `cover_note` FK; instead,
+  `PublicationTargetCoverNote` is the model carrying this relationship.
 
 ---
 

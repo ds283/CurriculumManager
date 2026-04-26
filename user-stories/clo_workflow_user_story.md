@@ -314,11 +314,11 @@ for this role.
 On saving `effective_from`, the system schedules a Celery publication task
 (using `django-celery-beat`, backed by the application database) to fire at
 the specified time. The Celery task ID is stored in
-`PublicationTarget.scheduled_task_id`.
+`PublicationTarget.publication_task_id`.
 
 **Revising the effective date** — if the effective date needs to change before
 it fires, the `publication_manager` revises `effective_from`. The system revokes
-the previously scheduled Celery task (using the stored `scheduled_task_id`) and
+the previously scheduled Celery task (using the stored `publication_task_id`) and
 schedules a replacement. The revision is recorded as a further `WorkflowEvent`.
 
 ---
@@ -353,7 +353,7 @@ without making any changes and logs the discrepancy. No user intervention is
 needed; the replacement task scheduled by the revision will fire at the correct
 time.
 
-On successful publication, `PublicationTarget.scheduled_task_id` is cleared.
+On successful publication, `PublicationTarget.publication_task_id` is cleared.
 The `PublicationTarget`, `ScheduledMilestone`, and all associated records are
 retained permanently as the historical record of what was planned and delivered,
 supporting transition duration estimation (Phase 6) and regulatory audit

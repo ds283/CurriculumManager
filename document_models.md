@@ -229,17 +229,17 @@ change, a new `CourseOutcomeContent` document is approved and published,
 superseding the previous version via the standard `AssetVersion`
 machinery.
 
-| Field                  | Type                     | Notes                                                                                                                                                                                                                          |
-|------------------------|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                   | PK                       |                                                                                                                                                                                                                                |
-| `document`             | OneToOneField → Document | `related_name='course_outcome'`                                                                                                                                                                                                |
-| `course`               | FK → CourseIdentifier    | `related_name='course_outcomes'`                                                                                                                                                                                               |
-| `outcome_code`         | CharField                | Stable human-readable identifier, e.g. `CLO-K1`. Assigned at approval time as a workflow side effect, never at form initiation. Never reused after retirement.                                                                 |
-| `text`                 | TextField                | The outcome statement. Plain text.                                                                                                                                                                                             |
-| `descriptor_category`  | CharField                | `TextChoices`: `knowledge_understanding`, `intellectual_skills`, `practical_skills`, `transferable_skills`. Classifies the outcome within the FHEQ level descriptor.                                                           |
-| `ordering`             | PositiveIntegerField     | Display sequence within the course's outcome list. Used for rendering within descriptor category groups.                                                                                                                       |
-| `is_retired`           | BooleanField             | Default `False`. Set to retire; never deleted. Retirement prompts review of dependent `ModuleOutcomeCLOMapping` records.                                                                                                       |
-| `regulatory_documents` | M2M → RegulatoryDocument | Subject Benchmark Statement clauses, PSRB framework documents, or OfS conditions this outcome addresses. Nullable — not all outcomes require explicit regulatory citation.                                                     |
+| Field                  | Type                     | Notes                                                                                                                                                                      |
+|------------------------|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                   | PK                       |                                                                                                                                                                            |
+| `document`             | OneToOneField → Document | `related_name='course_outcome'`                                                                                                                                            |
+| `course`               | FK → CourseIdentifier    | `related_name='course_outcomes'`                                                                                                                                           |
+| `outcome_code`         | CharField                | Stable human-readable identifier, e.g. `CLO-K1`. Assigned at approval time as a workflow side effect, never at form initiation. Never reused after retirement.             |
+| `text`                 | TextField                | The outcome statement. Plain text.                                                                                                                                         |
+| `descriptor_category`  | CharField                | `TextChoices`: `knowledge_understanding`, `intellectual_skills`, `practical_skills`, `transferable_skills`. Classifies the outcome within the FHEQ level descriptor.       |
+| `ordering`             | PositiveIntegerField     | Display sequence within the course's outcome list. Used for rendering within descriptor category groups.                                                                   |
+| `is_retired`           | BooleanField             | Default `False`. Set to retire; never deleted. Retirement prompts review of dependent `ModuleOutcomeCLOMapping` records.                                                   |
+| `regulatory_documents` | M2M → RegulatoryDocument | Subject Benchmark Statement clauses, PSRB framework documents, or OfS conditions this outcome addresses. Nullable — not all outcomes require explicit regulatory citation. |
 
 **Constraints:** `unique_together = (course, outcome_code)`
 
@@ -405,7 +405,7 @@ other content models.
 
 A coordinator-authored covering document describing the context, rationale,
 and scope of a submission to a governance committee. Attached to a
-`PublicationTarget` via `PublicationTarget.cover_note`. Versioned via the
+`PublicationTarget` via `PublicationTargetCoverNote`. Versioned via the
 standard `AssetVersion` machinery; the committee can inspect earlier
 revisions when a bundle is resubmitted after rejection.
 
@@ -414,26 +414,28 @@ revisions when a bundle is resubmitted after rejection.
 governed curriculum document; it supports governance process rather than
 recording curriculum content.
 
-One cover note document per `PublicationTarget`. The document persists
-across TLC cycles and receives revisions rather than being replaced. When
-a bundle is rescoped (e.g. a workflow is deferred to a later target), the
-coordinator revises the cover note to reflect the narrowed scope; the
-version history captures what was said at each submission.
+There may be multiple cover notes per `PublicationTarget` depending on how
+many committees sit on the approval pathway. Each cover note document persists
+across committee submission cycles and receives revisions rather than being
+replaced. When a bundle is rescoped (e.g. a workflow is deferred to a later
+target), the coordinator revises the cover note to reflect the narrowed scope;
+the version history captures what was said at each submission.
 
-| Field | Type                     | Notes                        |
-|-------|--------------------------|------------------------------|
-| `id`  | PK                       |                              |
-| `document` | OneToOneField → Document | `related_name='cover_note'` |
-| `body` | TextField               | Rich text (HTML). The covering narrative. No length limit. |
+| Field      | Type                     | Notes                                                      |
+|------------|--------------------------|------------------------------------------------------------|
+| `id`       | PK                       |                                                            |
+| `document` | OneToOneField → Document | `related_name='cover_note'`                                |
+| `body`     | TextField                | Rich text (HTML). The covering narrative. No length limit. |
 
 **FSM:** two states — `DRAFT → SUBMITTED`. Coordinator-only transition.
 No approval gate. The `SUBMITTED` state is required before the
 `PublicationTarget` can be attached to a `CommitteeMeeting` as an
 `AgendaItem`.
 
-**Reverse navigation:** `document.cover_note_for_target` (via the
-`related_name` on `PublicationTarget.cover_note`) gives the owning
-`PublicationTarget` without a FK on this model.
+**Reverse navigation:** `document.publication_target_cover_note` (via the
+`related_name` on `PublicationTargetCoverNote.document`) gives the owning
+`PublicationTargetCoverNote` record, from which the `PublicationTarget` and
+`CommitteeRole` are reachable without a FK on this content model.
 
 **`Document.DocumentType` registration:** add `submission_cover_note`
 to the `DocumentType` choices with content model
