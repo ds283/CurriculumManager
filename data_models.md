@@ -1095,33 +1095,30 @@ All scheduled milestones are grouped under this entity.
 Every change to `target_date` is recorded in `PublicationTargetDateChange`.
 `schedule_status` is the only field written by the scheduler.
 
-| Field                       | Type                              | Notes                                                                                                                                                                                                                                                                   |
-|-----------------------------|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                        | PK                                |                                                                                                                                                                                                                                                                         |
-| `tenant`                    | FK → Tenant                       |                                                                                                                                                                                                                                                                         |
-| `label`                     | CharField                         | e.g. `AY 2029/30 course review`                                                                                                                                                                                                                                         |
-| `description`               | TextField                         |                                                                                                                                                                                                                                                                         |
-| `target_document_type`      | CharField                         | The terminal document type                                                                                                                                                                                                                                              |
-| `target_state`              | CharField                         | The required terminal state                                                                                                                                                                                                                                             |
-| `target_date`               | DateField                         | Coordinator-owned. Never written by the scheduler.                                                                                                                                                                                                                      |
-| `date_confidence`           | CharField (TextChoices)           | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                                                                                                                                              |
-| `owner`                     | FK → User                         | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                                                                                                                                                |
-| `course`                    | FK → CourseIdentifier (nullable)  | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                                                                                                                                                    |
-| `schedule_status`           | CharField (TextChoices)           | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`.                                                                                                                        |
-| `cover_note`                | FK → Document (nullable)          | `related_name='cover_note_for_target'`. Points to a `Document` of type `submission_cover_note`, `classification=INTERNAL`. NULL until the coordinator creates a cover note. Creation of a cover note document is not required at target creation. `on_delete=SET_NULL`. |
-| `scope_anchor`              | CharField (TextChoices, nullable) | `DEPARTMENT \| SCHOOL \| FACULTY \| MANUAL`. NULL for non-impact target types.                                                                                                                                                                                          |
-| `scope_anchor_content_type` | FK → ContentType (nullable)       | ContentType of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                                                                                                                               |
-| `scope_anchor_object_id`    | PositiveIntegerField (nullable)   | PK of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                                                                                                                                        |
-| `abandoned_rationale`       | TextField (blank)                 | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.                                                                                                                                   |
-| `created_at`                | DateTimeField                     | auto                                                                                                                                                                                                                                                                    |
-
-**Integrity note:** `cover_note.tenant` must equal `tenant` when
-`cover_note` is non-null — enforced in `clean()`.
+| Field                       | Type                                 | Notes                                                                                                                                                                                                                                    |
+|-----------------------------|--------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                        | PK                                   |                                                                                                                                                                                                                                          |
+| `tenant`                    | FK → Tenant                          |                                                                                                                                                                                                                                          |
+| `label`                     | CharField                            | e.g. `AY 2029/30 course review`                                                                                                                                                                                                          |
+| `description`               | TextField                            |                                                                                                                                                                                                                                          |
+| `target_document_type`      | CharField                            | The terminal document type                                                                                                                                                                                                               |
+| `target_state`              | CharField                            | The required terminal state                                                                                                                                                                                                              |
+| `target_date`               | DateField                            | Coordinator-owned. Never written by the scheduler.                                                                                                                                                                                       |
+| `date_confidence`           | CharField (TextChoices)              | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                                                                                                               |
+| `owner`                     | FK → User                            | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                                                                                                                 |
+| `course`                    | FK → CourseIdentifier (nullable)     | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                                                                                                                     |
+| `schedule_status`           | CharField (TextChoices)              | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`.                                                                                         |
+| `effective_from`            | DateTimeField (nullable)             | Set by `publication_manager` after all bundle documents reach `APPROVED`. Used as `valid_from` on all `AssetVersion` records in the D17 publication transaction. Setting or revising this field is audited via `WorkflowEvent`. See D18. |
+| `publication_task_id`       | CharField (nullable, max_length=255) | Celery task ID of the pending publication task. Stored for revocation if `effective_from` is revised before the task fires. Updated atomically with `effective_from` via `on_commit`. See D18 and D22.                                   || `scope_anchor`              | CharField (TextChoices, nullable) | `DEPARTMENT \| SCHOOL \| FACULTY \| MANUAL`. NULL for non-impact target types.                                                                   |
+| `scope_anchor_content_type` | FK → ContentType (nullable)          | ContentType of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                                                                                                |
+| `scope_anchor_object_id`    | PositiveIntegerField (nullable)      | PK of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                                                                                                         |
+| `abandoned_rationale`       | TextField (blank)                    | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.                                                                                                    |
+| `created_at`                | DateTimeField                        | auto                                                                                                                                                                                                                                     |
 
 **Computed property:**
 
 - `is_active` returns `True` when `schedule_status` is not
-in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
+  in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
 - `scope_anchor_object` — GenericForeignKey over
   `scope_anchor_content_type` and `scope_anchor_object_id`.
 
@@ -1135,17 +1132,11 @@ in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
 - When `scope_anchor` is not NULL and not `MANUAL`, both
   `scope_anchor_content_type` and `scope_anchor_object_id` must be set.
 - When `scope_anchor = MANUAL` or NULL, both must be NULL.
-
-**Note on reverse navigation:** the `related_name='cover_note_for_target'`
-Django reverse relation provides navigation from the cover note `Document`
-back to its `PublicationTarget` without requiring a FK on the content
-model. No circular dependency in migrations.
-
-**Gate:** attachment of the `PublicationTarget` to a `CommitteeMeeting`
-as an `AgendaItem` is conditional on `cover_note` being non-null and
-`cover_note.current_workflow.state == SUBMITTED`. Enforced in the
-`AgendaItem` creation view and the Stage 8 FSM pre-transition guard.
-
+- `effective_from` may only be set when all documents in the bundle are at `APPROVED`. Enforced in the
+  `publication_manager` FSM transition handler, not in `clean()` — the bundle state is not directly inspectable from the
+  `PublicationTarget` alone.
+- Revising `effective_from` must revoke the existing `publication_task_id` and enqueue a new Celery task. Both writes
+  occur inside `transaction.atomic()` via the `on_commit` hook. See D18 and D22.
 
 ---
 
@@ -1166,6 +1157,55 @@ per change. Never updated or deleted.
 | `advisory`           | FK → SchedulerAdvisory (nullable) | The advisory that prompted this change, if any            |
 
 **Indexes:** `(publication_target, changed_at)`
+
+---
+
+### `PublicationTargetCoverNote` — model specification
+
+Junction between a `PublicationTarget` and a cover note `Document` for a
+specific committee role on the approvals pathway. One record per target per
+committee role. Created by the coordinator before the bundle can be attached to
+a meeting for that role's committee.
+
+| Field                | Type                   | Notes                                                                                                                                                         |
+|----------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                 | PK                     |                                                                                                                                                               |
+| `tenant`             | FK → Tenant            | Denormalised for `TenantScopedManager` filtering. Must equal `publication_target.tenant`. Enforced in `clean()`.                                              |
+| `publication_target` | FK → PublicationTarget | `related_name='cover_notes'`                                                                                                                                  |
+| `committee_role`     | FK → CommitteeRole     | `related_name='cover_notes'`. Identifies which committee-role audience this cover note is written for. Must belong to the same tenant. Enforced in `clean()`. |
+| `document`           | FK → Document          | `related_name='publication_target_cover_note'`. Must be `document_type = submission_cover_note`. Enforced in `clean()`.                                       |
+| `created_at`         | DateTimeField          | auto                                                                                                                                                          |
+
+**Constraints:** `unique_together = (publication_target, committee_role)`
+
+**Integrity notes:**
+
+- `tenant` must equal `publication_target.tenant`. Enforced in `clean()`.
+- `committee_role.tenant` must equal `tenant`. Enforced in `clean()`.
+- `document.document_type` must be `submission_cover_note`. Enforced in
+  `clean()`.
+- `document.tenant` must equal `tenant`. Enforced in `clean()`.
+
+**Gate:** attachment of a `PublicationTarget` to a `CommitteeMeeting` as an
+`AgendaItem` is conditional on a `PublicationTargetCoverNote` record existing
+for the `CommitteeRole` that maps to the target meeting's committee, and that
+record's `document` having `current_workflow.state == SUBMITTED`. Enforced in
+the `AgendaItem` creation view and the Stage 8 FSM pre-transition guard.
+
+**Resubmission behaviour:** when a bundle is rejected by a committee and
+resubmitted, the existing `PublicationTargetCoverNote` record for that role is
+retained. The coordinator revises the linked `Document` in place; the
+`AssetVersion` history records what was said at each submission. No new
+`PublicationTargetCoverNote` record is created on resubmission.
+
+**Escalation behaviour:** when a bundle advances to a higher committee (e.g.
+from TLC to BoS), the coordinator creates a new `PublicationTargetCoverNote`
+record for the new `CommitteeRole`. This is an independent authoring act; the
+new document is not a revision of the TLC cover note. Both records coexist
+under the same `PublicationTarget`, navigable via `target.cover_notes.all()`.
+
+**Ordering:** `committee_role ASC` (stable display order on coordinator
+dashboard).
 
 ---
 
@@ -1302,19 +1342,20 @@ per `(publication_target, advisory_type)` pair. The coordinator dismisses
 the advisory once actioned; a new advisory may be raised if the condition
 recurs.
 
-| Field                  | Type                     | Notes                                                                 |
-|------------------------|--------------------------|-----------------------------------------------------------------------|
-| `id`                   | PK                       |                                                                       |
-| `tenant`               | FK → Tenant              |                                                                       |
-| `publication_target`   | FK → PublicationTarget   | `related_name='advisories'`                                           |
-| `advisory_type`        | CharField (TextChoices)  | `SUGGESTED_RESCHEDULE \| MILESTONE_CRITICAL \| TARGET_UNACHIEVABLE`  |
-| `suggested_target_date`| DateField (nullable)     | Populated for `SUGGESTED_RESCHEDULE` type only                        |
-| `detail`               | TextField (blank)        | Plain-English explanation of the condition, generated by the scheduler|
-| `generated_at`         | DateTimeField            | auto                                                                  |
-| `dismissed_by`         | FK → User (nullable)     |                                                                       |
-| `dismissed_at`         | DateTimeField (nullable) |                                                                       |
+| Field                   | Type                     | Notes                                                                  |
+|-------------------------|--------------------------|------------------------------------------------------------------------|
+| `id`                    | PK                       |                                                                        |
+| `tenant`                | FK → Tenant              |                                                                        |
+| `publication_target`    | FK → PublicationTarget   | `related_name='advisories'`                                            |
+| `advisory_type`         | CharField (TextChoices)  | `SUGGESTED_RESCHEDULE \| MILESTONE_CRITICAL \| TARGET_UNACHIEVABLE`    |
+| `suggested_target_date` | DateField (nullable)     | Populated for `SUGGESTED_RESCHEDULE` type only                         |
+| `detail`                | TextField (blank)        | Plain-English explanation of the condition, generated by the scheduler |
+| `generated_at`          | DateTimeField            | auto                                                                   |
+| `dismissed_by`          | FK → User (nullable)     |                                                                        |
+| `dismissed_at`          | DateTimeField (nullable) |                                                                        |
 
 **Constraints:**
+
 - `UniqueConstraint(publication_target, advisory_type, condition=Q(dismissed_at__isnull=True))` —
   at most one open advisory per target per type.
 - `dismissed_by` and `dismissed_at` must both be set or both NULL. Enforced in `clean()`.
@@ -1495,23 +1536,24 @@ Meeting dates and submission deadlines for governance committees. Used by
 the backwards scheduler to resolve committee-gated transition durations.
 Supports both standing recurring meetings and exceptional ad hoc meetings.
 
-| Field                   | Type                     | Notes                                                                  |
-|-------------------------|--------------------------|------------------------------------------------------------------------|
-| `id`                    | PK                       |                                                                        |
-| `tenant`                | FK → Tenant              |                                                                        |
-| `committee`             | FK → CommitteeIdentifier |                                                                        |
-| `academic_year`         | CharField                | e.g. `2028/29`                                                         |
-| `meeting_date`          | DateField (nullable)     | NULL when `date_confidence = WINDOW`. Required for INDICATIVE/CONFIRMED.|
-| `earliest_expected_date`| DateField (nullable)     | Lower bound of scheduling window. Populated for standing meetings.     |
-| `latest_expected_date`  | DateField (nullable)     | Upper bound of scheduling window. Populated for standing meetings.     |
-| `date_confidence`       | CharField (TextChoices)  | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`                    |
-| `submission_deadline`   | DateField (nullable)     | NULL when `meeting_date` is NULL. Latest date for paper submission.    |
-| `is_exceptional`        | BooleanField             | Ad hoc meeting; not part of standing calendar. Default False.          |
-| `notes`                 | TextField (blank)        |                                                                        |
-| `confirmed_by`          | FK → User (nullable)     | Set when `date_confidence` transitions to CONFIRMED                    |
-| `confirmed_at`          | DateTimeField (nullable) |                                                                        |
+| Field                    | Type                     | Notes                                                                    |
+|--------------------------|--------------------------|--------------------------------------------------------------------------|
+| `id`                     | PK                       |                                                                          |
+| `tenant`                 | FK → Tenant              |                                                                          |
+| `committee`              | FK → CommitteeIdentifier |                                                                          |
+| `academic_year`          | CharField                | e.g. `2028/29`                                                           |
+| `meeting_date`           | DateField (nullable)     | NULL when `date_confidence = WINDOW`. Required for INDICATIVE/CONFIRMED. |
+| `earliest_expected_date` | DateField (nullable)     | Lower bound of scheduling window. Populated for standing meetings.       |
+| `latest_expected_date`   | DateField (nullable)     | Upper bound of scheduling window. Populated for standing meetings.       |
+| `date_confidence`        | CharField (TextChoices)  | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`                       |
+| `submission_deadline`    | DateField (nullable)     | NULL when `meeting_date` is NULL. Latest date for paper submission.      |
+| `is_exceptional`         | BooleanField             | Ad hoc meeting; not part of standing calendar. Default False.            |
+| `notes`                  | TextField (blank)        |                                                                          |
+| `confirmed_by`           | FK → User (nullable)     | Set when `date_confidence` transitions to CONFIRMED                      |
+| `confirmed_at`           | DateTimeField (nullable) |                                                                          |
 
 **Constraints:**
+
 - `tenant` must agree with `committee.tenant`. Enforced in `clean()`.
 - `meeting_date` must be non-NULL when `date_confidence` is `INDICATIVE` or
   `CONFIRMED`. Enforced in `clean()`.
