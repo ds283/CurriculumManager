@@ -808,6 +808,7 @@ separate table linked by `OneToOneField`.
 | `title`            | CharField                                   |                                                                                                                                                                                                                 |
 | `reference_code`   | CharField                                   | Unique per tenant                                                                                                                                                                                               |
 | `change_rationale` | TextField (nullable, blank)                 | Formal governance justification for the change. Populated at workflow initiation. Nullable because not all document workflows are change-driven (e.g. initial CLO introduction at programme inception). See D2. |
+| `labels`           | ManyToMany → DocumentLabel (blank)          | `related_name='documents'`                                                                                                                                                                                      |
 | `due_date`         | DateTimeField (nullable)                    | Updated by scheduler                                                                                                                                                                                            |
 | `current_workflow` | OneToOneField → WorkflowInstance (nullable) | Denormalised for fast reads                                                                                                                                                                                     |
 | `current_version`  | OneToOneField → AssetVersion (nullable)     | Denormalised for fast reads                                                                                                                                                                                     |
@@ -819,6 +820,16 @@ separate table linked by `OneToOneField`.
 **Indexes:** `(tenant, document_type)`, `(tenant, due_date)`, `(parent,)`
 
 **Managers:** `objects = TenantScopedManager()`, `all_tenants = TenantScopedManager(require_tenant=False)`
+
+**Note on labels:** The through-table is implicit (Django default).
+No additional fields are required on the join; labelling is not timestamped
+or attributed at the join level — creation audit lives on `DocumentLabel`
+and document-level audit on `WorkflowEvent`.
+
+**Integrity note:** The query layer must ensure that only labels whose
+`tenant` matches `document.tenant` are assignable. This is not enforceable
+at the database level via a simple FK constraint on the implicit
+through-table; enforce in the form/serializer `clean()`.
 
 ---
 
@@ -836,6 +847,76 @@ separate table linked by `OneToOneField`.
 | `reaccreditation`       | `ReaccreditationContent`     |                                                                                                                                                                    |
 | `module_requisite`      | `ModuleRequisiteContent`     | **Deferred** — governance model TBD with curriculum team                                                                                                           |
 | `curriculum_review`     | `CurriculumReviewContent`    | **Deferred** — follows same pattern as `reaccreditation`                                                                                                           |
+
+---
+
+### `DocumentLabel`
+
+#### Document labels: design decisions
+
+**System-wide vs. user-specific labels.** Labels are system-wide and
+tenant-scoped. User-specific labels would require a second ownership
+dimension throughout every query and add UI complexity with minimal
+governance benefit. All users with appropriate access can see and apply
+the same label vocabulary within their tenant.
+
+**Visibility by role.** A label carries a `visible_roles` set that
+controls which roles can see documents carrying that label. This is a
+display and filter concern — it does not affect whether a document exists
+or is accessible — and is enforced in the query layer rather than in the
+data model. The `visible_roles` field records the policy; the UI for
+administering that policy is out of scope at this layer.
+
+**Note on role representation.** `visible_roles` is stored as a
+`JSONField` containing a list of role slugs rather than a separate
+through-table; it may be null to indicate that the label is visible to
+all roles, rather than just a defined subset. The set of roles is a
+bounded controlled vocabulary (defined in `TenantMembership.role`),
+the list is not expected to grow  beyond a handful of entries per label,
+and a through-table would add a  join with no query benefit at this
+scale. If role management becomes more complex this can be promoted
+to a through-table without a model restructure.
+
+#### Field table
+
+Controlled vocabulary of labels within a tenant. Labels are
+system-wide (tenant-scoped), not user-specific.
+
+| Field           | Type                 | Notes                                                                                                   |
+|-----------------|----------------------|---------------------------------------------------------------------------------------------------------|
+| `id`            | PK                   |                                                                                                         |
+| `tenant`        | FK → Tenant          | `on_delete=PROTECT`                                                                                     |
+| `slug`          | SlugField            | Machine-readable identifier. Unique within tenant.                                                      |
+| `label`         | CharField            | Human-readable display name.                                                                            |
+| `description`   | TextField            | Optional explanatory text shown in the label administration UI.                                         |
+| `colour`        | CharField            | Hex colour string (e.g. `#3B82F6`). Used for badge rendering. Optional.                                 |
+| `visible_roles` | JSONField (nullable) | List of role slugs for which this label is visible. `NULL` = visible to all roles.                      |
+| `is_active`     | BooleanField         | Default `True`. Inactive labels are hidden from the apply-label UI but retained for historical records. |
+| `created_by`    | FK → User            | `on_delete=PROTECT`. Audit — who created this label.                                                    |
+| `created_at`    | DateTimeField        | auto                                                                                                    |
+
+**Constraints:** `unique_together = (tenant, slug)`
+
+**Manager:** `TenantScopedManager` filtering on `tenant`.
+
+**Active labels query:**
+
+```python
+DocumentLabel.objects.filter(tenant=tenant, is_active=True)
+```
+
+**Visible labels for a role:**
+
+```python
+from django.db.models import Q
+
+DocumentLabel.objects.filter(
+    tenant=tenant,
+    is_active=True,
+).filter(
+    Q(visible_roles__isnull=True) | Q(visible_roles__contains=role_slug)
+)
+```
 
 ---
 
@@ -1460,27 +1541,64 @@ historical `WorkflowEvent` timestamps.
 
 ### `LLMResult`
 
-Persisted output of any LLM inference task. LLM outputs are
-never used transiently — they are always stored before being
-surfaced in the UI, and always labelled with provenance.
+#### Design decisions
 
-| Field          | Type                     | Notes                                                                                          |
-|----------------|--------------------------|------------------------------------------------------------------------------------------------|
-| `id`           | PK                       |                                                                                                |
-| `tenant`       | FK → Tenant              |                                                                                                |
-| `task_type`    | CharField                | `committee_screening`, `impact_analysis`, `form_draft`, `regulatory_check`, `schedule_summary` |
-| `subject_type` | ContentType              | ContentType of the related object                                                              |
-| `subject_id`   | PositiveIntegerField     | GenericForeignKey target                                                                       |
-| `model_name`   | CharField                | e.g. `qwen2.5:32b-q4`                                                                          |
-| `prompt_hash`  | CharField                | SHA256 of the prompt, for cache/dedup                                                          |
-| `output`       | JSONField                | Structured result                                                                              |
-| `generated_at` | DateTimeField            | auto                                                                                           |
-| `reviewed_by`  | FK → User (nullable)     |                                                                                                |
-| `reviewed_at`  | DateTimeField (nullable) |                                                                                                |
-| `accepted`     | BooleanField (nullable)  | NULL = not yet reviewed                                                                        |
+**What to capture beyond `model_name`.** `model_name` alone is
+insufficient for reproducibility. The conditions under which an output
+was generated include: which model was used, what prompt was active, how
+large the context window was configured, and how long inference took.
+Together these allow a reviewer to assess whether a cached or historical
+result is still valid and to re-run inference under comparable conditions.
 
-**Impact analysis:** for `task_type = impact_analysis`, `LLMResult` is
-provenance only. The primary scoping record is `PublicationScopeItem`;
+**`prompt_version` as a structured field.** `prompt_hash` (SHA256 of the
+prompt text) is already present and handles exact-match cache/dedup.
+`prompt_version` is a complementary human-readable label (e.g. `v1.2`,
+`impact-analysis-2025-06`) that identifies the prompt template in version
+control. These serve different purposes: the hash is for dedup, the
+version label is for auditability and human communication. Both are
+retained.
+
+**Ancillary execution metadata as `JSONField`.** `execution_time` and
+any other ancillary fields that may be added over time (e.g.
+`token_count_prompt`, `token_count_completion`, `temperature`,
+`quantisation`) are stored in an `execution_metadata` JSONField rather
+than as individual columns. These fields are informational — they are
+never filtered on in application queries — and the set may grow as
+Ollama's API surface expands. Structured columns are reserved for fields
+that queries or business logic will depend on.
+
+**`context_window_size`.** Stored as a structured integer column (tokens)
+rather than in the JSON blob, because it is a meaningful signal for
+reviewers assessing whether the model had full context during inference.
+It may also become a filter criterion if the system supports multiple
+model configurations with different context limits.
+
+#### Field table
+
+Persisted output of any LLM inference task. LLM outputs are never used
+transiently — they are always stored before being surfaced in the UI, and
+always labelled with provenance.
+
+| Field                 | Type                     | Notes                                                                                                                                                                                                    |
+|-----------------------|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                  | PK                       |                                                                                                                                                                                                          |
+| `tenant`              | FK → Tenant              |                                                                                                                                                                                                          |
+| `task_type`           | CharField                | `committee_screening`, `impact_analysis`, `form_draft`, `regulatory_check`, `schedule_summary`                                                                                                           |
+| `subject_type`        | ContentType              | ContentType of the related object                                                                                                                                                                        |
+| `subject_id`          | PositiveIntegerField     | GenericForeignKey target                                                                                                                                                                                 |
+| `model_name`          | CharField                | e.g. `qwen2.5:32b-q4`                                                                                                                                                                                    |
+| `context_window_size` | PositiveIntegerField     | Configured context window in tokens at time of inference                                                                                                                                                 |
+| `prompt_hash`         | CharField(64)            | SHA256 of the rendered prompt, for cache/dedup                                                                                                                                                           |
+| `prompt_version`      | CharField                | Human-readable prompt template version label, e.g. `v1.2`. Nullable — populated when the prompt is managed under version control.                                                                        |
+| `output`              | JSONField                | Structured result                                                                                                                                                                                        |
+| `execution_metadata`  | JSONField                | Ancillary run data: `execution_time_ms`, `token_count_prompt`, `token_count_completion`, `temperature`, `quantisation`. Nullable. Schema is informational only — not filtered on in application queries. |
+| `generated_at`        | DateTimeField            | auto                                                                                                                                                                                                     |
+| `reviewed_by`         | FK → User (nullable)     |                                                                                                                                                                                                          |
+| `reviewed_at`         | DateTimeField (nullable) |                                                                                                                                                                                                          |
+| `accepted`            | BooleanField (nullable)  | NULL = not yet reviewed                                                                                                                                                                                  |
+
+**Impact analysis note:** for `task_type = impact_analysis`, `LLMResult`
+is provenance only. The primary scoping record is `PublicationScopeItem`;
 each `PublicationScopeItem` row carries a nullable FK to the `LLMResult`
 record for the inference run that populated it. Do not query `LLMResult`
 directly for impact analysis output — query `PublicationScopeItem` instead.
