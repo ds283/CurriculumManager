@@ -401,6 +401,48 @@ other content models.
 
 ---
 
+### `SubmissionCoverNoteContent`
+
+A coordinator-authored covering document describing the context, rationale,
+and scope of a submission to a governance committee. Attached to a
+`PublicationTarget` via `PublicationTarget.cover_note`. Versioned via the
+standard `AssetVersion` machinery; the committee can inspect earlier
+revisions when a bundle is resubmitted after rejection.
+
+`classification = INTERNAL`. Invisible to the backwards scheduler —
+`target_document_type` never equals `submission_cover_note`. Not a
+governed curriculum document; it supports governance process rather than
+recording curriculum content.
+
+One cover note document per `PublicationTarget`. The document persists
+across TLC cycles and receives revisions rather than being replaced. When
+a bundle is rescoped (e.g. a workflow is deferred to a later target), the
+coordinator revises the cover note to reflect the narrowed scope; the
+version history captures what was said at each submission.
+
+| Field | Type                     | Notes                        |
+|-------|--------------------------|------------------------------|
+| `id`  | PK                       |                              |
+| `document` | OneToOneField → Document | `related_name='cover_note'` |
+| `body` | TextField               | Rich text (HTML). The covering narrative. No length limit. |
+
+**FSM:** two states — `DRAFT → SUBMITTED`. Coordinator-only transition.
+No approval gate. The `SUBMITTED` state is required before the
+`PublicationTarget` can be attached to a `CommitteeMeeting` as an
+`AgendaItem`.
+
+**Reverse navigation:** `document.cover_note_for_target` (via the
+`related_name` on `PublicationTarget.cover_note`) gives the owning
+`PublicationTarget` without a FK on this model.
+
+**`Document.DocumentType` registration:** add `submission_cover_note`
+to the `DocumentType` choices with content model
+`SubmissionCoverNoteContent`. Register a minimal FSM
+(`DRAFT → SUBMITTED`, coordinator role only). No entry in
+`DOCUMENT_DEPENDENCIES` — this type has no scheduler involvement.
+
+---
+
 ### `ModuleRequisiteContent`
 
 **Deferred** — governance model TBD with curriculum team. Whether requisite

@@ -824,17 +824,18 @@ separate table linked by `OneToOneField`.
 
 ### `Document.DocumentType` values
 
-| Value               | Content model                | Notes                                                               |
-|---------------------|------------------------------|---------------------------------------------------------------------|
-| `module_spec`       | `ModuleSpecificationContent` |                                                                     |
-| `course_spec`       | `CourseSpecificationContent` |                                                                     |
-| `assessment`        | `AssessmentContent`          | Covers all assessment formats (exam, coursework, problem set, etc.) |
-| `course_outcome`    | `CourseOutcomeContent`       |                                                                     |
-| `module_outcome`    | `ModuleOutcomeContent`       |                                                                     |
-| `teaching_activity` | `TeachingActivityContent`    | Multiple may be approved simultaneously per module                  |
-| `reaccreditation`   | `ReaccreditationContent`     |                                                                     |
-| `module_requisite`  | `ModuleRequisiteContent`     | **Deferred** — governance model TBD with curriculum team            |
-| `curriculum_review` | `CurriculumReviewContent`    | **Deferred** — follows same pattern as `reaccreditation`            |
+| Value                   | Content model                | Notes                                                                                                                                                              |
+|-------------------------|------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `submission_cover_note` | `SubmissionCoverNoteContent` | `classification=INTERNAL`. Coordinator-authored covering document for committee submissions. Scheduler-invisible — `target_document_type` never equals this value. |
+| `module_spec`           | `ModuleSpecificationContent` |                                                                                                                                                                    |
+| `course_spec`           | `CourseSpecificationContent` |                                                                                                                                                                    |
+| `assessment`            | `AssessmentContent`          | Covers all assessment formats (exam, coursework, problem set, etc.)                                                                                                |
+| `course_outcome`        | `CourseOutcomeContent`       |                                                                                                                                                                    |
+| `module_outcome`        | `ModuleOutcomeContent`       |                                                                                                                                                                    |
+| `teaching_activity`     | `TeachingActivityContent`    | Multiple may be approved simultaneously per module                                                                                                                 |
+| `reaccreditation`       | `ReaccreditationContent`     |                                                                                                                                                                    |
+| `module_requisite`      | `ModuleRequisiteContent`     | **Deferred** — governance model TBD with curriculum team                                                                                                           |
+| `curriculum_review`     | `CurriculumReviewContent`    | **Deferred** — follows same pattern as `reaccreditation`                                                                                                           |
 
 ---
 
@@ -1094,24 +1095,28 @@ All scheduled milestones are grouped under this entity.
 Every change to `target_date` is recorded in `PublicationTargetDateChange`.
 `schedule_status` is the only field written by the scheduler.
 
-| Field                       | Type                              | Notes                                                                                                                                            |
-|-----------------------------|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                        | PK                                |                                                                                                                                                  |
-| `tenant`                    | FK → Tenant                       |                                                                                                                                                  |
-| `label`                     | CharField                         | e.g. `AY 2029/30 course review`                                                                                                                  |
-| `description`               | TextField                         |                                                                                                                                                  |
-| `target_document_type`      | CharField                         | The terminal document type                                                                                                                       |
-| `target_state`              | CharField                         | The required terminal state                                                                                                                      |
-| `target_date`               | DateField                         | Coordinator-owned. Never written by the scheduler.                                                                                               |
-| `date_confidence`           | CharField (TextChoices)           | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                       |
-| `owner`                     | FK → User                         | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                         |
-| `course`                    | FK → CourseIdentifier (nullable)  | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                             |
-| `schedule_status`           | CharField (TextChoices)           | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`. |
-| `scope_anchor`              | CharField (TextChoices, nullable) | `DEPARTMENT \| SCHOOL \| FACULTY \| MANUAL`. NULL for non-impact target types.                                                                   |
-| `scope_anchor_content_type` | FK → ContentType (nullable)       | ContentType of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                        |
-| `scope_anchor_object_id`    | PositiveIntegerField (nullable)   | PK of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                 |
-| `abandoned_rationale`       | TextField (blank)                 | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.            |
-| `created_at`                | DateTimeField                     | auto                                                                                                                                             |
+| Field                       | Type                              | Notes                                                                                                                                                                                                                                                                   |
+|-----------------------------|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                        | PK                                |                                                                                                                                                                                                                                                                         |
+| `tenant`                    | FK → Tenant                       |                                                                                                                                                                                                                                                                         |
+| `label`                     | CharField                         | e.g. `AY 2029/30 course review`                                                                                                                                                                                                                                         |
+| `description`               | TextField                         |                                                                                                                                                                                                                                                                         |
+| `target_document_type`      | CharField                         | The terminal document type                                                                                                                                                                                                                                              |
+| `target_state`              | CharField                         | The required terminal state                                                                                                                                                                                                                                             |
+| `target_date`               | DateField                         | Coordinator-owned. Never written by the scheduler.                                                                                                                                                                                                                      |
+| `date_confidence`           | CharField (TextChoices)           | `WINDOW \| PROVISIONAL \| INDICATIVE \| CONFIRMED`. Unidirectional toward CONFIRMED; enforced in `clean()`                                                                                                                                                              |
+| `owner`                     | FK → User                         | Usually the course coordinator; could also be TLC chair or a curriculum review/accreditation coordinator                                                                                                                                                                |
+| `course`                    | FK → CourseIdentifier (nullable)  | If set, this target belongs to the specified course. Unanchored targets are allowed.                                                                                                                                                                                    |
+| `schedule_status`           | CharField (TextChoices)           | `ON_TRACK \| AT_RISK \| CRITICAL \| UNACHIEVABLE \| COMPLETED \| ABANDONED \| SUPERSEDED`. Written by scheduler except `ABANDONED`/`SUPERSEDED`.                                                                                                                        |
+| `cover_note`                | FK → Document (nullable)          | `related_name='cover_note_for_target'`. Points to a `Document` of type `submission_cover_note`, `classification=INTERNAL`. NULL until the coordinator creates a cover note. Creation of a cover note document is not required at target creation. `on_delete=SET_NULL`. |
+| `scope_anchor`              | CharField (TextChoices, nullable) | `DEPARTMENT \| SCHOOL \| FACULTY \| MANUAL`. NULL for non-impact target types.                                                                                                                                                                                          |
+| `scope_anchor_content_type` | FK → ContentType (nullable)       | ContentType of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                                                                                                                               |
+| `scope_anchor_object_id`    | PositiveIntegerField (nullable)   | PK of the anchor organisational unit. NULL when `scope_anchor = MANUAL` or NULL.                                                                                                                                                                                        |
+| `abandoned_rationale`       | TextField (blank)                 | Required when `schedule_status = ABANDONED`. Records the governance justification for closing the target without publication. See S8.                                                                                                                                   |
+| `created_at`                | DateTimeField                     | auto                                                                                                                                                                                                                                                                    |
+
+**Integrity note:** `cover_note.tenant` must equal `tenant` when
+`cover_note` is non-null — enforced in `clean()`.
 
 **Computed property:**
 
@@ -1130,6 +1135,17 @@ in `{COMPLETED, ABANDONED, SUPERSEDED}`. Not a stored field.
 - When `scope_anchor` is not NULL and not `MANUAL`, both
   `scope_anchor_content_type` and `scope_anchor_object_id` must be set.
 - When `scope_anchor = MANUAL` or NULL, both must be NULL.
+
+**Note on reverse navigation:** the `related_name='cover_note_for_target'`
+Django reverse relation provides navigation from the cover note `Document`
+back to its `PublicationTarget` without requiring a FK on the content
+model. No circular dependency in migrations.
+
+**Gate:** attachment of the `PublicationTarget` to a `CommitteeMeeting`
+as an `AgendaItem` is conditional on `cover_note` being non-null and
+`cover_note.current_workflow.state == SUBMITTED`. Enforced in the
+`AgendaItem` creation view and the Stage 8 FSM pre-transition guard.
+
 
 ---
 
@@ -1532,6 +1548,63 @@ Demonstrates the cross-cutting query benefit of the envelope model.
 **Constraints:** `unique_together = (meeting, document)`
 
 **Ordering:** `order ASC`
+
+### `CommitteeFeedbackItem`
+
+Structured feedback from a committee on a specific document within a
+rejected submission. Hangs off `AgendaItem`; one record per document
+commented on. Replaces the informal practice of embedding per-document
+feedback in `WorkflowEvent.metadata`, which was designed for lightweight
+transition annotations and is not appropriate for structured committee
+responses to substantive curriculum proposals.
+
+`WorkflowEvent.metadata` on the bundle-level rejection transition retains
+its role as the authoritative record of the transition event itself (who
+acted, when, in what role). `CommitteeFeedbackItem` carries the content
+of the committee's feedback, navigable by document.
+
+| Field         | Type                    | Notes                                                                                                                                                                                                             |
+|---------------|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`          | PK                      |                                                                                                                                                                                                                   |
+| `agenda_item` | FK → AgendaItem         | `related_name='feedback_items'`. The agenda item for the bundle-level CLO or primary document.                                                                                                                    |
+| `document`    | FK → Document           | `related_name='committee_feedback_items'`. The specific document this feedback concerns. May be the same document as `agenda_item.document` for bundle-level feedback, or a dependent document (MLO, assessment). |
+| `feedback`    | TextField               | The committee's feedback. Plain text. No length limit — committee responses to substantive proposals may be extensive.                                                                                            |
+| `severity`    | CharField (TextChoices) | `ADVISORY \| REQUIRED`. `ADVISORY` — committee recommends a change but will not block approval. `REQUIRED` — change must be made before resubmission. Default `REQUIRED`.                                         |
+| `created_at`  | DateTimeField           | auto                                                                                                                                                                                                              |
+
+**Constraints:** no uniqueness constraint — a committee may record multiple
+feedback items for the same document at the same meeting (e.g. separate
+items for outcome language and assessment alignment).
+
+**Ordering:** `agenda_item ASC, created_at ASC`
+
+**Integrity note:** `document.tenant` must equal
+`agenda_item.meeting.tenant` — enforced in `clean()`.
+
+**Query helper on `Document`:**
+
+```python
+def committee_feedback_items(self):
+    """
+    Returns all CommitteeFeedbackItem records concerning this document,
+    across all agenda items and all meetings. Ordered by meeting date
+    then creation order, giving a chronological feedback history.
+    """
+    return CommitteeFeedbackItem.objects.filter(
+        document=self,
+    ).select_related(
+        'agenda_item__meeting',
+    ).order_by(
+        'agenda_item__meeting__meeting_date',
+        'created_at',
+    )
+```
+
+This helper is the primary access path when surfacing prior committee
+feedback during a revision cycle — for example, when a document has moved
+to a new `PublicationTarget` following a rescoping exercise. Feedback
+attribution is preserved across rescoping because `CommitteeFeedbackItem`
+belongs to the meeting and the submission event, not to the target.
 
 ---
 

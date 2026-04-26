@@ -354,8 +354,8 @@ transition. Nothing in the FSM itself enforces or records eligibility —
 it is computed on demand by the scheduling UI and the committee attachment
 logic.
 
-**Depends on:** D10 (bundle gate), G5 (bundle object not yet modelled).
-
+**Previously depended on:** D10 (bundle gate — resolved), G5 (resolved,
+see above). D15 is now unblocked.
 ---
 
 ### D16 — FSM states distinguish `APPROVED` from `PUBLISHED`
@@ -614,26 +614,85 @@ agenda section. The model links a `Document` to a `CommitteeMeeting`, carries
 agenda order, and includes a `notes` field.
 
 `AgendaItem` now carries an `outcome` field for recording the committee's
-per-item decision. Without the G5 bundle model, committee rejection outcomes
-otherwise have no structured home other than `WorkflowEvent.metadata` JSON.
+per-item decision. Structured per-document feedback on rejection is carried
+by `CommitteeFeedbackItem` records hanging off the `AgendaItem` — see G5
+(resolved) and `data_models.md`.
 
-**Depends on:** G5 for full resolution of the outcome recording question.
-
+**Previously depended on:** G5 for full resolution of the outcome recording
+question — now resolved. G4 is fully resolved.
 ---
 
-### G5 — Explicit submission bundle object not modelled
+### ~~G5~~ — Explicit submission bundle object — **RESOLVED**
 
-The submission bundle presented to TLC is currently implicit — it is the
-set of `ScheduledMilestone` instances under a `PublicationTarget` that have
-reached `TLC_REVIEW`. This may be insufficient.
+#### Decision
 
-The committee rejection record, `AgendaItem` (G4), and the coordinator's
-return workflow all need an explicit object to reference. A bundle model
-would also give submissions a stable identity across multiple TLC cycles,
-making it possible to query the full revision history of a submission.
+A dedicated `SubmissionBundle` model is not required. The bundle
+identity is already implicit in `PublicationTarget` +
+`ScheduledMilestone`: the set of documents being submitted to committee
+is fully recoverable as the `ScheduledMilestone` instances under the
+`PublicationTarget` whose linked `Document` is at `TLC_REVIEW`. No
+structural information is lost by not materialising this as a separate
+model.
 
-**Depends on:** G4.
-**Prerequisite for:** D10, D12, committee stage implementation.
+The two genuine gaps identified during analysis — committee feedback
+discoverability and the absence of a covering document — are resolved
+by additive changes to existing models rather than a new container:
+
+**Committee feedback discoverability:** a `CommitteeFeedbackItem` model
+hangs off `AgendaItem`, carrying a `document` FK and `feedback` text.
+This replaces the informal practice of embedding per-document feedback
+in `WorkflowEvent.metadata`. A query helper on `Document` —
+`document.committee_feedback_items()` — returns all feedback across all
+agenda items for that document, ordered chronologically. Feedback
+attribution is preserved across `PublicationTarget` rescoping because
+`CommitteeFeedbackItem` belongs to the meeting and the submission event,
+not to the target. See `data_models.md`.
+
+**Covering document:** `PublicationTarget` gains a nullable
+`cover_note` FK to a `Document` of the new lightweight type
+`submission_cover_note` (`classification=INTERNAL`). This document is
+versioned via the standard `AssetVersion` machinery and has a
+coordinator-only two-state FSM (`DRAFT → SUBMITTED`). Attachment of the
+target to a `CommitteeMeeting` as an `AgendaItem` is gated on the cover
+note having reached `SUBMITTED`. The cover note persists across TLC
+cycles and receives revisions on resubmission; the committee can inspect
+earlier versions. See `document_models.md`.
+
+#### Rationale for rejecting `SubmissionBundle`
+
+A `SubmissionBundle` model was considered. The arguments for it were:
+stable bundle identity across multiple TLC cycles, and a structured home
+for committee rejection feedback. Both of these needs are met by the
+above design without a new container model. Introducing `SubmissionBundle`
+would have required resolving its relationship to `PublicationTarget` (one
+bundle per submission cycle, or one per target?), its FSM states, and its
+role in the Stage 8 gate — complexity that serves no additional purpose
+given that `PublicationTarget` already carries the bundle's structural
+identity.
+
+#### Rescoping scenario
+
+When a `PublicationTarget` is rescoped mid-cycle — for example, workflow
+B is deferred to a new target T' while A is expedited under the original
+target T — prior `CommitteeFeedbackItem` records for B remain correctly
+attributed to their originating meeting via `AgendaItem`. They are
+accessible via `document_b.committee_feedback_items()` regardless of
+which target B now belongs to. No feedback is lost or misattributed.
+
+#### Impact on D10 and D12
+
+D10 (no partial approval) is enforced as an FSM pre-transition guard on
+the CLO document: the approve/reject transition requires all dependent
+milestones under the `PublicationTarget` to be at `TLC_REVIEW`. This
+guard does not require a `SubmissionBundle` model.
+
+D12 (scheduler recomputes on rejection) is triggered by the CLO rejection
+transition. The recomputation iterates over all milestones under the
+`PublicationTarget`. This does not require a `SubmissionBundle` model.
+
+**Previously depended on:** G4 (now resolved).
+**Previously prerequisite for:** D10, D12, committee stage
+implementation — all now unblocked.
 
 ---
 
